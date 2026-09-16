@@ -1,6 +1,6 @@
 /* ============================================================
    星海霸权 · 帝国征途 — scrips.js
-   V3 完整版：飞机 T 级 + 材料消耗 + 速度优化
+   完整优化版
    ============================================================ */
 
 /* ============================================================
@@ -13,7 +13,6 @@ const SIZES = ['light', 'medium', 'heavy'];
 const MAT_NAMES = ['', '陨铁', '星钢', '暗星钢', '虚空钢', '奇点钢', '超弦晶', '创世核'];
 const MAT_COLORS = ['', '#a0ffc8', '#a0cfff', '#c0a0ff', '#ffb0e0', '#ffd75f', '#ff8b5f', '#ff4a4a'];
 
-/* 舰船船体（全部 T≥2 消耗对应 T-1 材料） */
 const HULLS = {
   1:{name:'T1 侦察艇', space:100, baseHp:80,   hullCost:0,    unlock:null, matCost:null},
   2:{name:'T2 护卫舰', space:130, baseHp:130,  hullCost:60,   unlock:{mat:1, cost:8}, matCost:{mat:1, n:1}},
@@ -24,7 +23,6 @@ const HULLS = {
   7:{name:'T7 旗舰',   space:420, baseHp:1300, hullCost:2000, unlock:{mat:6, cost:30}, matCost:{mat:6, n:6}},
 };
 
-/* 飞机船体（新增，T≥2 消耗对应 T-1 材料） */
 const PLANE_HULLS = {
   1:{name:'T1 战机', space:24, baseHp:20,  unlock:null, matCost:null},
   2:{name:'T2 战机', space:32, baseHp:42,  unlock:{mat:1, cost:5}, matCost:{mat:1, n:1}},
@@ -126,7 +124,7 @@ function mkArmor(tier, size){
 function mkEngine(tier, size){
   return { key:'engine', name:`T${tier} ${SIZE_LABEL[size]}引擎`,
     size: Math.round(6*tier*SIZE_MUL[size]),
-    spd: Math.round(30*Math.pow(tier,1.35)*SIZE_MUL[size]),   // ★ 提速：22 → 30，1.3 → 1.35
+    spd: Math.round(30*Math.pow(tier,1.35)*SIZE_MUL[size]),
     eva: Math.round(4*Math.pow(tier,1.2)*SIZE_MUL[size]),
     cost: Math.round(38*Math.pow(tier,1.7)*SIZE_MUL[size]) };
 }
@@ -166,7 +164,7 @@ function mkPlaneArmor(tier){
 }
 function mkPlaneEngine(tier){
   return { key:'engine', name:`T${tier} 引擎`, size: 2 + tier,
-    spd: Math.round(38 * Math.pow(tier, 1.25)),   // ★ 提速
+    spd: Math.round(38 * Math.pow(tier, 1.25)),
     eva: Math.round(5 * Math.pow(tier, 1.1)),
     cost: Math.round(12 * Math.pow(tier, 1.6)) };
 }
@@ -249,8 +247,7 @@ const G = {
   designs: [],
   planeDesigns: [],
   planeDesign: {
-    tier: 1,
-    type: 'multirole', name: '新战机',
+    tier: 1, type: 'multirole', name: '新战机',
     weapons: { main: null },
     armor: null, engine: null, reactor: null,
   },
@@ -287,6 +284,26 @@ let shipyardCurrent = null;
 let attackSelect = null;
 let lastTick = performance.now();
 let visionTimer = 0;
+
+/* ★ 性能优化：玩家星球缓存 */
+let _playerPlanetsCache = null;
+let _playerPlanetsVersion = 0;
+let _playerPlanetsCacheVersion = -1;
+let rightDirty = true;
+let fullRenderCd = 0;
+
+function getPlayerPlanets(){
+  if(_playerPlanetsCacheVersion !== _playerPlanetsVersion){
+    _playerPlanetsCache = G.planets.filter(p => p.owner === 'player');
+    _playerPlanetsCacheVersion = _playerPlanetsVersion;
+  }
+  return _playerPlanetsCache;
+}
+function invalidatePlayerPlanets(){ _playerPlanetsVersion++; }
+function markRightDirty(){
+  rightDirty = true;
+  if(fullRenderCd > 0.15) fullRenderCd = 0.15;
+}
 
 function uid(p){ return p + (G.nextUid++); }
 function rand(a,b){ return a + Math.random()*(b-a); }
@@ -351,6 +368,7 @@ function initPlanets(mapData){
       battle: null, flash: 0, visibility: 0,
     });
   }
+  invalidatePlayerPlanets();
 }
 
 /* ============================================================
@@ -375,6 +393,7 @@ function placeFactions(numAI){
   home.owner = 'player';
   home.facilities = ['dock', 'repair'];
   G.playerHomeId = home.id;
+  invalidatePlayerPlanets();
 
   const used = new Set([home.id]);
   const MIN_D = 130;
@@ -539,7 +558,7 @@ function getAllPlayerShipsByGroup(gid){
 }
 
 /* ============================================================
-   6. 飞机（含 T 级）
+   6. 飞机
    ============================================================ */
 function planeStats(design){
   const planeHull = PLANE_HULLS[design.tier || 1] || PLANE_HULLS[1];
@@ -766,7 +785,7 @@ function drawFleet(f){
 }
 
 /* ============================================================
-   8. 舰队（速度提高）
+   8. 舰队
    ============================================================ */
 function launchFleet(owner, ships, fromId, toId, purpose){
   if(!ships.length) return null;
@@ -774,7 +793,6 @@ function launchFleet(owner, ships, fromId, toId, purpose){
   if(!from || !to) return null;
   const spd = Math.min(...ships.map(s=>s.baseSpd));
   const d = dist(from, to);
-  // ★ 速度优化：d / spd * 5 → d / spd * 1.5，最少 1.2 秒
   const duration = Math.max(1.2, d / spd * 1.5);
   const fleet = {
     id: uid('f'), owner, ships,
@@ -809,7 +827,9 @@ function arriveFleet(fleet){
   if(target.owner === fleet.owner){
     for(const s of alive) target.garrison.push(s);
     if(fleet.owner === 'player') addLog(`◉ ${alive.length} 艘舰船抵达 ${target.name}`, 'info');
-    markDirty(); return;
+    markDirty();
+    markRightDirty();
+    return;
   }
   const defenders = target.garrison.filter(s=>s.hp>0);
   if(!defenders.length){
@@ -822,9 +842,11 @@ function arriveFleet(fleet){
 }
 function onCapture(region, owner){
   region.flash = 1.2;
+  invalidatePlayerPlanets();
   if(owner === 'player') addLog(`★ 占领 ${region.name} (Lv${region.level})`, 'win');
   else if(region.owner === 'player') addLog(`✖ 失去 ${region.name}`, 'lose');
   markDirty();
+  markRightDirty();
 }
 
 /* ============================================================
@@ -912,8 +934,8 @@ function battleStep(b, dt){
   tickAAvsPlanes(b, dt);
   checkCarrierLoss(b);
 
-  const atkDmg = collectSideDamage(atkAlive, defAlive, defBonus, dt, b, 'atk');
-  const defDmg = collectSideDamage(defAlive, atkAlive, atkBonus, dt, b, 'def');
+  const atkDmg = collectSideDamage(atkAlive, defAlive, defBonus, dt);
+  const defDmg = collectSideDamage(defAlive, atkAlive, atkBonus, dt);
   applySideDamage(defAlive, atkDmg, b, 'atk');
   applySideDamage(atkAlive, defDmg, b, 'def');
 
@@ -1040,7 +1062,7 @@ function checkCarrierLoss(b){
   }
 }
 
-function collectSideDamage(attackers, targets, targetBonus, dt, b, side){
+function collectSideDamage(attackers, targets, targetBonus, dt){
   const result = new Map();
   let frontCol = Infinity;
   for(const s of targets){
@@ -1192,11 +1214,13 @@ function endBattle(b, reason){
   }
   region.battle = null;
   b.cleanup = true;
+  invalidatePlayerPlanets();
   markDirty();
+  markRightDirty();
 }
 
 /* ============================================================
-   10. 建造（消耗材料检查）
+   10. 建造
    ============================================================ */
 function hasMaterial(cost){
   if(!cost) return true;
@@ -1206,7 +1230,6 @@ function payMaterial(cost){
   if(!cost) return;
   G.materials[cost.mat] -= cost.n;
 }
-
 function startBuild(designId, regionId){
   const d = G.designs.find(x=>x.id===designId);
   if(!d) return false;
@@ -1224,6 +1247,7 @@ function startBuild(designId, regionId){
   });
   addLog(`🏭 开始建造 ${d.name}`, 'info');
   markDirty();
+  markRightDirty();
   return true;
 }
 function tickBuilds(dt){
@@ -1237,6 +1261,7 @@ function tickBuilds(dt){
       const ship = createPlayerShip(q.designId);
       if(ship) region.garrison.push(ship);
       G.buildQueue.splice(i,1);
+      markRightDirty();
     }
   }
 }
@@ -1261,8 +1286,7 @@ function regionMatOutput(region){
 }
 function totalOutput(){
   let a=0, e=0;
-  for(const p of G.planets){
-    if(p.owner !== 'player') continue;
+  for(const p of getPlayerPlanets()){
     const o = regionOutput(p);
     a += o.alloy; e += o.energy;
   }
@@ -1285,6 +1309,7 @@ function upgradeRegion(id){
   r.level++;
   addLog(`⬆ ${r.name} 升级至 Lv.${r.level}`, 'info');
   markDirty();
+  markRightDirty();
   return true;
 }
 function facilityCost(region, type){
@@ -1312,6 +1337,7 @@ function buildFacility(id, type){
   r.facilities.push(type);
   addLog(`🏗 ${r.name} 建成 ${FACILITIES[type].name}`, 'info');
   markDirty();
+  markRightDirty();
   return true;
 }
 
@@ -1329,6 +1355,7 @@ function unlockHull(tier){
   G.hullUnlocked[tier] = true;
   addLog(`✨ 解锁 ${h.name}`, 'win');
   markDirty();
+  markRightDirty();
   return {ok:true};
 }
 function unlockPlaneHull(tier){
@@ -1342,6 +1369,7 @@ function unlockPlaneHull(tier){
   G.planeHullUnlocked[tier] = true;
   addLog(`✨ 解锁 ${h.name}`, 'win');
   markDirty();
+  markRightDirty();
   return {ok:true};
 }
 
@@ -1402,8 +1430,7 @@ function updateVisibility(dt){
   if(visionTimer > 0) return;
   visionTimer = 0.2;
   const sources = [];
-  for(const p of G.planets){
-    if(p.owner !== 'player') continue;
+  for(const p of getPlayerPlanets()){
     let range = 500;
     const radars = p.facilities.filter(f=>f==='radar').length;
     range += radars * 350;
@@ -1431,8 +1458,7 @@ function updateVisibility(dt){
    13c. 近防炮
    ============================================================ */
 function tickCIWS(dt){
-  for(const p of G.planets){
-    if(p.owner !== 'player') continue;
+  for(const p of getPlayerPlanets()){
     const ciwsCount = p.facilities.filter(f=>f==='ciws').length;
     if(ciwsCount === 0) continue;
     const range = 180 + ciwsCount * 120;
@@ -1463,14 +1489,16 @@ function tickCIWS(dt){
 /* ============================================================
    14. 更新
    ============================================================ */
-function markDirty(){ pendingSave = 5; }
+function markDirty(){
+  pendingSave = 5;
+  markRightDirty();
+}
 function update(dt){
   G.time += dt;
   const out = totalOutput();
   G.alloy += out.alloy * dt;
   G.energy += out.energy * dt;
-  for(const p of G.planets){
-    if(p.owner !== 'player') continue;
+  for(const p of getPlayerPlanets()){
     const rate = regionMatOutput(p);
     if(rate > 0 && p.level >= 3){
       const tier = Math.min(p.level - 1, 7);
@@ -1504,8 +1532,12 @@ function update(dt){
   }
   uiTimer -= dt;
   if(uiTimer <= 0){
-    uiTimer = 0.5;
+    uiTimer = 0.4;
     renderTop();
+  }
+  fullRenderCd -= dt;
+  if(rightDirty && fullRenderCd <= 0 && !isEditingInput()){
+    rightDirty = false;
     renderRight();
   }
   if(pendingSave > 0){
@@ -1537,12 +1569,20 @@ document.addEventListener('visibilitychange', ()=>{
 /* ============================================================
    16. UI 渲染
    ============================================================ */
+function isEditingInput(){
+  const ae = document.activeElement;
+  if(!ae) return false;
+  if(ae.tagName !== 'INPUT' && ae.tagName !== 'TEXTAREA') return false;
+  const rb = document.getElementById('rightBody');
+  return rb && rb.contains(ae);
+}
+
 function renderTop(){
   document.getElementById('uiNation').textContent = G.nationName;
   document.getElementById('uiAlloy').textContent = Math.floor(G.alloy);
   document.getElementById('uiEnergy').textContent = Math.floor(G.energy);
-  const owned = G.planets.filter(p=>p.owner==='player').length;
-  document.getElementById('uiRegion').textContent = owned + '/' + G.planets.length;
+  const playerList = getPlayerPlanets();
+  document.getElementById('uiRegion').textContent = playerList.length + '/' + G.planets.length;
   const out = totalOutput();
   document.getElementById('uiAlloyRate').textContent = '+' + out.alloy.toFixed(1) + '/s';
   document.getElementById('uiEnergyRate').textContent = '+' + out.energy.toFixed(1) + '/s';
@@ -1551,7 +1591,7 @@ function renderTop(){
   let has = false;
   for(let i=1;i<=7;i++){
     const v = Math.floor(G.materials[i] || 0);
-    const hasRate = G.planets.some(p => p.owner==='player' && Math.min(p.level-1, 7) === i);
+    const hasRate = playerList.some(p => Math.min(p.level-1, 7) === i);
     if(v > 0 || hasRate){
       html += `<span class="matv" style="background:${hexA(MAT_COLORS[i], 0.2)};color:${MAT_COLORS[i]}">${v}</span>`;
       has = true;
@@ -1563,11 +1603,6 @@ function renderTop(){
 }
 
 function renderRight(){
-  const ae = document.activeElement;
-  if(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')){
-    const rb = document.getElementById('rightBody');
-    if(rb && rb.contains(ae)) return;
-  }
   document.querySelectorAll('.tab').forEach(t=>{
     t.classList.toggle('on', t.dataset.tab === G.tab);
   });
@@ -1666,13 +1701,13 @@ function viewRegion(){
       html += `<div class="panel"><h3>造船厂</h3>
         <button class="btn wide green" data-gotab="shipyard">🏗 前往造船页面</button></div>`;
     }
-    const hasOthers = G.planets.some(pp => pp.id !== p.id && pp.owner === 'player' && pp.garrison.some(s=>s.hp>0));
+    const hasOthers = getPlayerPlanets().some(pp => pp.id !== p.id);
     if(hasOthers){
       html += `<div class="panel"><h3>调兵</h3>
         <button class="btn wide" data-attack="${p.id}">🚀 从其他星球派兵至此</button></div>`;
     }
   } else if(!p.battle){
-    const hasPlayer = G.planets.some(pp => pp.owner === 'player' && pp.garrison.some(s=>s.hp>0));
+    const hasPlayer = getPlayerPlanets().length > 0;
     if(hasPlayer){
       html += `<div class="panel"><h3>发起进攻</h3>
         <button class="btn wide red" data-attack="${p.id}">⚔ 派兵攻打此星球</button></div>`;
@@ -1741,7 +1776,6 @@ function viewDesign(){
       ${unlocked?'':'disabled'}>T${t}<br><span style="font-size:9px;opacity:.7">${h.baseHp}HP</span></button>`;
   }
   html += `</div>`;
-  // 材料消耗显示
   if(hull.matCost){
     const have = Math.floor(G.materials[hull.matCost.mat] || 0);
     const ok = have >= hull.matCost.n;
@@ -1901,7 +1935,7 @@ function checkClassReq(classKey, mods, hullTier){
   return {ok:true};
 }
 
-/* ---------- 空军视图（含飞机 T 级） ---------- */
+/* ---------- 空军视图 ---------- */
 function viewAirforce(){
   let html = '';
   html += `<div class="panel"><h3>机库仓库 <span class="sub">全局共享</span></h3>`;
@@ -1924,7 +1958,6 @@ function viewAirforce(){
   const st = planeStats(pd);
   const over = st.size > planeHull.space;
 
-  /* 飞机 T 级选择 */
   html += `<div class="panel"><h3>飞机等级 <span class="sub">${planeHull.name} · 空间 ${st.size}/${planeHull.space}</span></h3>`;
   html += `<div class="hullgrid">`;
   for(let t=1;t<=7;t++){
@@ -1944,7 +1977,6 @@ function viewAirforce(){
   }
   html += `</div>`;
 
-  /* 飞机 T 级解锁 */
   const lockedHulls = [];
   for(let t=2;t<=7;t++) if(!G.planeHullUnlocked[t]) lockedHulls.push(t);
   if(lockedHulls.length){
@@ -1963,7 +1995,6 @@ function viewAirforce(){
     html += `</div>`;
   }
 
-  /* 机种 */
   html += `<div class="panel"><h3>机种</h3>`;
   html += `<div class="classgrid">`;
   for(const key in PLANE_TYPES){
@@ -1975,7 +2006,6 @@ function viewAirforce(){
   }
   html += `</div></div>`;
 
-  /* 配件（只显示 ≤ 飞机 T 级） */
   const planeTier = pd.tier || 1;
   html += `<div class="panel"><h3>配件配置 <span class="sub">最高 T${planeTier}</span></h3>`;
 
@@ -2343,7 +2373,6 @@ document.getElementById('tabs').addEventListener('click', ev=>{
 document.getElementById('rightBody').addEventListener('click', ev=>{
   const t = ev.target;
 
-  /* 舰种 */
   const clsBtn = t.closest('[data-class]');
   if(clsBtn && !clsBtn.disabled){
     G.designClass = clsBtn.dataset.class;
@@ -2352,12 +2381,10 @@ document.getElementById('rightBody').addEventListener('click', ev=>{
     return;
   }
 
-  /* 飞机 T 级 */
   const ptBtn = t.closest('[data-planetier]');
   if(ptBtn && !ptBtn.disabled){
     const newTier = +ptBtn.dataset.planetier;
     G.planeDesign.tier = newTier;
-    // 清理超等级配件
     const w = G.planeDesign.weapons.main;
     if(w && w.tier > newTier) G.planeDesign.weapons.main = null;
     if(G.planeDesign.armor && G.planeDesign.armor.tier > newTier) G.planeDesign.armor = null;
@@ -2368,7 +2395,6 @@ document.getElementById('rightBody').addEventListener('click', ev=>{
     return;
   }
 
-  /* 飞机机种 */
   const ptBtn2 = t.closest('[data-planetype]');
   if(ptBtn2){
     G.planeDesign.type = ptBtn2.dataset.planetype;
@@ -2377,7 +2403,6 @@ document.getElementById('rightBody').addEventListener('click', ev=>{
     return;
   }
 
-  /* 解锁飞机等级 */
   if(t.dataset.unlockplane){
     const r = unlockPlaneHull(+t.dataset.unlockplane);
     if(!r.ok) toast(r.reason);
@@ -2386,10 +2411,8 @@ document.getElementById('rightBody').addEventListener('click', ev=>{
     return;
   }
 
-  /* 战斗动画 */
   if(t.dataset.battleanim){ openBattleAnim(+t.dataset.battleanim); return; }
 
-  /* 造船厂 */
   if(t.dataset.yard){
     shipyardCurrent = +t.dataset.yard;
     document.getElementById('rightBody').dataset.sig='';
@@ -2412,7 +2435,6 @@ document.getElementById('rightBody').addEventListener('click', ev=>{
     return;
   }
 
-  /* 编组 */
   if(t.dataset.newgroup){
     const name = prompt('新建编组名称', G.nationName + '第' + (G.groups.length+1) + '舰队');
     if(name !== null){
@@ -2465,7 +2487,6 @@ document.getElementById('rightBody').addEventListener('click', ev=>{
     return;
   }
 
-  /* 飞机保存/生产 */
   if(t.dataset.saveplane){
     const inp = document.getElementById('planeNameInput');
     const name = (inp && inp.value.trim()) || '新战机';
@@ -2543,7 +2564,6 @@ document.getElementById('rightBody').addEventListener('click', ev=>{
     return;
   }
 
-  /* 部署飞机 */
   if(t.dataset.deploy){
     const ship = findPlayerShipByUid(t.dataset.deploy);
     if(!ship) return;
@@ -2586,7 +2606,6 @@ document.getElementById('rightBody').addEventListener('click', ev=>{
     return;
   }
 
-  /* 船体 */
   const hb = t.closest('[data-hull]');
   if(hb && !hb.disabled){
     const newHull = +hb.dataset.hull;
@@ -2811,7 +2830,6 @@ document.getElementById('rightBody').addEventListener('focusout', ()=>{
   }, 100);
 });
 
-/* 阵型拖拽 */
 document.getElementById('rightBody').addEventListener('dragstart', ev=>{
   const card = ev.target.closest('[data-drag-ship]');
   if(!card) return;
@@ -2853,7 +2871,6 @@ document.getElementById('rightBody').addEventListener('drop', ev=>{
   }
 });
 
-/* 地图交互 */
 let isDragging = false, dragStartX = 0, dragStartY = 0, dragCamX = 0, dragCamY = 0;
 let hasDragged = false;
 canvas.addEventListener('pointerdown', ev=>{
@@ -2969,7 +2986,6 @@ function applySaveData(data){
   G.planeHullUnlocked = data.planeHullUnlocked || {1:true,2:false,3:false,4:false,5:false,6:false,7:false};
   G.designs = data.designs || [];
   G.planeDesigns = data.planeDesigns || [];
-  // 兼容：为旧飞机设计补 tier
   for(const pd of G.planeDesigns){
     if(pd.tier === undefined) pd.tier = 1;
   }
@@ -3035,6 +3051,7 @@ function applySaveData(data){
     }
   }
   G.battles = [];
+  invalidatePlayerPlanets();
 
   applyOfflineProgress(data.timestamp);
 }
@@ -3364,6 +3381,8 @@ function newGame(){
   shipyardCurrent = null;
   pendingSave = 0;
   idleSaveTimer = 0;
+  rightDirty = true;
+  fullRenderCd = 0;
 
   const mapData = generateMapData(MAP_SEED);
   initPlanets(mapData);
