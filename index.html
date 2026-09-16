@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>星海霸权 · 帝国征途</title>
+<link rel="stylesheet" href="./s.css">
+</head>
+<body>
+<canvas id="map"></canvas>
+
+<div id="topbar">
+  <div class="logo">星 海 霸 权</div>
+  <div class="stat cmdr"><span class="i">🏛</span><span id="uiNation">国家</span></div>
+  <div class="stat alloy"><span class="i">◈</span><span id="uiAlloy">0</span>
+    <span class="rate" id="uiAlloyRate">+0/s</span></div>
+  <div class="stat energy"><span class="i">⚡</span><span id="uiEnergy">0</span>
+    <span class="rate" id="uiEnergyRate">+0/s</span></div>
+  <div class="stat region"><span class="i">★</span><span id="uiRegion">0/0</span></div>
+  <div class="stat mats" id="uiMatsBox"><span class="i">⬢</span></div>
+  <div class="topbar-right">
+    <div class="zoom-ctl">
+      <button id="btnZoomIn">＋</button>
+      <span id="zoomLabel">1.0×</span>
+      <button id="btnZoomOut">－</button>
+    </div>
+    <button id="btnCenter" class="top-btn" title="回到母星">⌖</button>
+    <button id="btnNewSave" class="top-btn" title="新建存档">📄</button>
+  </div>
+</div>
+
+<aside id="right">
+  <div id="tabs">
+    <button class="tab on" data-tab="region">星球</button>
+    <button class="tab" data-tab="design">设计</button>
+    <button class="tab" data-tab="airforce">空军</button>
+    <button class="tab" data-tab="shipyard">造船</button>
+    <button class="tab" data-tab="fleet">舰队</button>
+    <button class="tab" data-tab="log">日志</button>
+  </div>
+  <div id="rightBody"></div>
+</aside>
+
+<div id="nameOverlay" class="name-overlay show">
+  <div class="name-box">
+    <h2>建 立 国 家</h2>
+    <p>为你的星际帝国命名</p>
+    <input type="text" id="nameInput" placeholder="输入国名" maxlength="12" value="泰拉联邦">
+    <button id="nameConfirm">建 国</button>
+  </div>
+</div>
+
+<script src="./scrips.js" defer></script>
+</body>
+</html>
