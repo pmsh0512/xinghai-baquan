@@ -8,7 +8,7 @@ function tickAI(dt){
     G.aiTimers[key]-=dt; if(G.aiTimers[key]>0) continue;
     
     // 刷兵频率降低：初始 30 秒，最快 18 秒
-    G.aiTimers[key]=Math.max(18, 30 - G.aiWaves[key]*0.2); 
+    G.aiTimers[key]=Math.max(1, 2 - G.aiWaves[key]*0.001); 
     G.aiWaves[key]++; 
     const wave=G.aiWaves[key];
     
@@ -36,25 +36,25 @@ function tickAI(dt){
     if(!bestTarget) continue;
 
     const pool = G.factions[key].designs || makeAIDesignPool();
-    const maxHull = Math.min(7, 1 + Math.floor(wave / 5)); 
+    const maxHull = Math.min(7, 1 + Math.floor(wave / 6)); 
     const fleetShips = [];
     
     // 核心主力（最多 1 艘）
     const highTier = pool.filter(d => d.hull >= 5 && d.hull <= maxHull);
-    if(highTier.length && Math.random() < 0.5) { 
+    if(highTier.length && Math.random() < 0.4) { 
       fleetShips.push(createEnemyShipFromDesign(highTier[Math.floor(Math.random()*highTier.length)], key));
     }
     
     // 中坚力量（基础 1 艘，每 5 波加 1 艘，最多 4 艘）
     const midTier = pool.filter(d => d.hull >= 3 && d.hull <= 4);
-    const midCount = Math.min(4, Math.floor(wave / 5) + 1);
+    const midCount = Math.min(10, Math.floor(wave / 8) + 1);
     for(let i=0; i<midCount; i++) {
       if(midTier.length) fleetShips.push(createEnemyShipFromDesign(midTier[Math.floor(Math.random()*midTier.length)], key));
     }
     
     // 护卫炮灰（基础 2 艘，每 4 波加 1 艘，最多 6 艘）
     const lowTier = pool.filter(d => d.hull <= 2);
-    const lowCount = Math.min(6, 2 + Math.floor(wave / 4));
+    const lowCount = Math.min(20, 2 + Math.floor(wave / 4));
     for(let i=0; i<lowCount; i++) {
       const d = lowTier.length ? lowTier[Math.floor(Math.random()*lowTier.length)] : pool[0];
       fleetShips.push(createEnemyShipFromDesign(d, key));

@@ -2,6 +2,10 @@
    08-fleets.js — 舰队移动、战术与抵达
    ========================================================= */
 
+/* =========================================================
+   08-fleets.js — 舰队移动、战术与抵达
+   ========================================================= */
+
 function launchFleet(owner, ships, fromId, toId, purpose = 'move', task = null){
   if(!ships.length) return null; 
   const from = G.planets[fromId], to = G.planets[toId]; 
@@ -89,6 +93,7 @@ function arriveFleet(fleet){
     onCapture(target, fleet.owner); 
     
     if (fleet.task?.type === 'zone_sweep' && fleet.owner === 'player') {
+       target.garrison = []; // 清空后立刻推进
        smartSplitAndAttack(target, alive, fleet.task.zoneId);
     } else {
        target.garrison = alive; 
@@ -139,8 +144,10 @@ function smartSplitAndAttack(fromP, ships, zoneId) {
   }
   
   targets.sort((a,b) => Math.hypot(a.x - fromP.x, a.y - fromP.y) - Math.hypot(b.x - fromP.x, b.y - fromP.y));
-  const maxRoutes = G.maxSweepRoutes || 3;
-  if (targets.length > maxRoutes) targets = targets.slice(0, maxRoutes);
+  
+  // ★ 限制最大分兵路线，且不能超过剩余兵力
+  const maxRoutes = Math.min(G.maxSweepRoutes || 3, targets.length, ships.length);
+  targets = targets.slice(0, maxRoutes);
   
   let totalTargetPower = 0;
   for (const t of targets) {
@@ -149,9 +156,10 @@ function smartSplitAndAttack(fromP, ships, zoneId) {
   }
   
   let remainingShips = [...ships];
-  const squads = [];
   
   for (let i = 0; i < targets.length; i++) {
+    if (remainingShips.length === 0) break;
+    
     const t = targets[i];
     let count = 0;
     
@@ -159,20 +167,16 @@ function smartSplitAndAttack(fromP, ships, zoneId) {
       count = remainingShips.length; 
     } else {
       let ratio = t._tempPower / totalTargetPower;
-      count = Math.max(1, Math.round(ships.length * ratio));
-      const leftTargets = targets.length - 1 - i;
-      if (count > remainingShips.length - leftTargets) count = remainingShips.length - leftTargets;
+      // 保证至少 1 艘，且留足给后续目标的兵力
+      count = Math.max(1, Math.floor(ships.length * ratio));
+      count = Math.min(count, remainingShips.length - (targets.length - 1 - i));
     }
     
     const squad = remainingShips.splice(0, count);
-    squads.push({ target: t, squad });
-  }
-  
-  for (const s of squads) {
-    if (s.squad.length > 0) {
-      launchFleet('player', s.squad, fromP.id, s.target.id, 'attack', { type: 'zone_sweep', zoneId: zoneId });
+    if (squad.length > 0) {
+      launchFleet('player', squad, fromP.id, t.id, 'attack', { type: 'zone_sweep', zoneId: zoneId });
     }
   }
   
-  if (squads.length > 1) addLog(`🚀 舰队在 ${fromP.name} 分兵 ${squads.length} 路，向不同目标出击`, 'info');
+  if (targets.length > 1) addLog(`🚀 舰队在 ${fromP.name} 自动分兵 ${targets.length} 路推进`, 'info');
 }

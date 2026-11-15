@@ -382,60 +382,83 @@ window.globalDispatch = (zoneId, mode) => {
   const zone = G.zones.find(z => z.id === zoneId);
   if (!zone) return;
 
-  const allShips = [];
+  // 收集全图所有闲置兵
+  let availableShips = [];
   for (const p of G.planets) {
     if (p.owner !== 'player') continue;
-    const mine = p.garrison.filter(s => s.owner === 'player' && s.hp > 0);
-    for (const s of mine) {
-      s._fromPlanetId = p.id; 
-      allShips.push(s);
+    for (const s of p.garrison) {
+      if (s.owner === 'player' && s.hp > 0) {
+        availableShips.push({ ship: s, from: p.id, x: p.x, y: p.y });
+      }
     }
   }
 
-  if (allShips.length === 0) { toast('全图没有闲置的舰船'); return; }
-
-  for (const s of allShips) {
-    const p = G.planets[s._fromPlanetId];
-    p.garrison = p.garrison.filter(x => x.uid !== s.uid);
-  }
-
-  const fleetsByPlanet = {};
-  for (const s of allShips) {
-    if (!fleetsByPlanet[s._fromPlanetId]) fleetsByPlanet[s._fromPlanetId] = [];
-    fleetsByPlanet[s._fromPlanetId].push(s);
-  }
+  if (availableShips.length === 0) { toast('全图没有闲置的舰船'); return; }
 
   const minX = Math.min(zone.x1, zone.x2), maxX = Math.max(zone.x1, zone.x2);
   const minY = Math.min(zone.y1, zone.y2), maxY = Math.max(zone.y1, zone.y2);
   const pad = 20 / CAM.scale;
 
   if (mode === 'sweep') {
+    // 1. 获取框内所有敌人
     let targets = [];
     for (const p of G.planets) {
-      if (p.owner === 'player') continue;
-      if (p.x >= minX - pad && p.x <= maxX + pad && p.y >= minY - pad && p.y <= maxY + pad) targets.push(p);
+      if (p.owner !== 'player') {
+        if (p.x >= minX - pad && p.x <= maxX + pad && p.y >= minY - pad && p.y <= maxY + pad) targets.push(p);
+      }
     }
     if (targets.length === 0) { toast('该战区内没有敌人'); return; }
     
+    // ★ 2. 按距离排序，并限制路线数量
+    const maxRoutes = G.maxSweepRoutes || 3;
+    if (targets.length > maxRoutes) {
+      // 按距离“战区中心”的位置寻找最近的几个
+      const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+      targets.sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy));
+      targets = targets.slice(0, maxRoutes);
+    }
+
+    // 3. 计算选定目标的战力权重
     let totalPower = 0;
     targets.forEach(t => {
       t._tempPower = (typeof getGarrisonPower === 'function' ? getGarrisonPower(t.garrison) : 100) + (t.level * 100);
       totalPower += t._tempPower;
     });
     
-    let remainingShips = [...allShips];
+    // 4. 按比例分兵与就近出击
     for (let i = 0; i < targets.length; i++) {
       const t = targets[i];
-      let count = (i === targets.length - 1) ? remainingShips.length : Math.max(1, Math.round(allShips.length * (t._tempPower / totalPower)));
-      const assigned = remainingShips.splice(0, count);
+      let count = 0;
       
+      if (i === targets.length - 1) {
+        count = availableShips.length; // 最后一路拿走所有剩下的
+      } else {
+        count = Math.max(1, Math.round(availableShips.length * (t._tempPower / totalPower)));
+      }
+      
+      if (count <= 0) continue;
+
+      // ★ 5. 就近原则：把剩余的兵，按距离目标远近排序
+      availableShips.sort((a, b) => Math.hypot(a.x - t.x, a.y - t.y) - Math.hypot(b.x - t.x, b.y - t.y));
+      const assigned = availableShips.splice(0, count);
+      
+      // 打包出发
       const grouped = {};
-      for (const s of assigned) { (grouped[s._fromPlanetId] = grouped[s._fromPlanetId] || []).push(s); }
+      for (const item of assigned) {
+        if (!grouped[item.from]) grouped[item.from] = [];
+        grouped[item.from].push(item.ship);
+      }
+      
       for (const pid in grouped) {
-        launchFleet('player', grouped[pid], +pid, t.id, 'attack', { type: 'zone_sweep', zoneId: zone.id });
+        const fId = +pid;
+        const p = G.planets[fId];
+        // 从原星球移除
+        p.garrison = p.garrison.filter(gs => !grouped[pid].some(x => x.uid === gs.uid));
+        launchFleet('player', grouped[pid], fId, t.id, 'attack', { type: 'zone_sweep', zoneId: zone.id });
       }
     }
-    toast(`🚀 全军出击：${targets.length} 个目标，多路并进`);
+    
+    toast(`🚀 全军出击：锁定 ${targets.length} 个目标，就近出击`);
     addLog(`🚀 执行全军扫荡，分兵 ${targets.length} 路`, 'info');
 
   } else if (mode === 'balance' || mode === 'frontline') {
@@ -457,13 +480,15 @@ window.globalDispatch = (zoneId, mode) => {
 
     if (defendTargets.length === 0) { toast('没有符合条件需要防守的星球'); return; }
     
-    const chunkSize = Math.ceil(allShips.length / defendTargets.length);
+    const chunkSize = Math.ceil(availableShips.length / defendTargets.length);
     for (let i = 0; i < defendTargets.length; i++) {
-      const chunk = allShips.slice(i * chunkSize, (i + 1) * chunkSize);
+      const chunk = availableShips.slice(i * chunkSize, (i + 1) * chunkSize);
       const grouped = {};
-      for (const s of chunk) { (grouped[s._fromPlanetId] = grouped[s._fromPlanetId] || []).push(s); }
+      for (const item of chunk) { (grouped[item.from] = grouped[item.from] || []).push(item.ship); }
       
       for (const pid in grouped) {
+        const p = G.planets[+pid];
+        p.garrison = p.garrison.filter(gs => !grouped[pid].some(x => x.uid === gs.uid));
         launchFleet('player', grouped[pid], +pid, defendTargets[i].id, 'move', null);
       }
     }
@@ -475,7 +500,6 @@ window.globalDispatch = (zoneId, mode) => {
   document.getElementById('rightBody').dataset.sig = '';
   renderRight();
 };
-
 function viewAttackSelect(){
   if(!attackSelect) return '';
   const target = G.planets[attackSelect.targetId];

@@ -130,36 +130,16 @@ function endBattle(b,reason){
   for(const s of defAlive){ if(s.squadron){ s.squadron=s.squadron.map(p=>{ const inst=b.defPlanes.find(x=>x.designId===p.designId&&x._carrierUid===s.uid); if(inst) return {...p,hp:inst.hp,shd:inst.shd,_ch:0}; return p; }).filter(p=>p.hp>0); } }
   for(const s of [...b.attacker,...b.defender]){ if(s.hp<=0&&s.squadron&&s.squadron.length){ for(const p of s.squadron){ G.hangar[p.designId]=(G.hangar[p.designId]||0)+1; } s.squadron=[]; } }
   
-  if(b.outcome==='attacker'){
+      if(b.outcome==='attacker'){
     region.owner = b.attackerOwner; 
     onCapture(region, b.attackerOwner);
     
     let moved = false;
-    if (b.attackerOwner === 'player' && b.task?.type === 'zone_sweep' && atkAlive.length && typeof findNextZoneTarget === 'function') {
-      const zone = G.zones.find(z => z.id === b.task.zoneId);
-      let hasNextTarget = false;
-      if (zone) {
-        const minX = Math.min(zone.x1, zone.x2), maxX = Math.max(zone.x1, zone.x2);
-        const minY = Math.min(zone.y1, zone.y2), maxY = Math.max(zone.y1, zone.y2);
-        const pad = 20 / CAM.scale;
-        for (const p of G.planets) {
-          if (p.owner !== 'player' && p.x >= minX - pad && p.x <= maxX + pad && p.y >= minY - pad && p.y <= maxY + pad) { hasNextTarget = true; break; }
-        }
-      }
-
-      if (hasNextTarget) {
-        // 留 30% 驻守
-        const keepCount = Math.max(1, Math.floor(atkAlive.length * 0.3));
-        const keepShips = atkAlive.slice(0, keepCount);
-        const moveShips = atkAlive.slice(keepCount);
-        region.garrison = keepShips;
-        if (moveShips.length > 0) {
-          moved = findNextZoneTarget({ task: b.task }, region.id, moveShips);
-        } else {
-          moved = true; 
-        }
-      } else {
-        moved = false; 
+    if (b.attackerOwner === 'player' && b.task?.type === 'zone_sweep' && atkAlive.length) {
+      if (typeof smartSplitAndAttack === 'function') {
+        region.garrison = []; 
+        smartSplitAndAttack(region, atkAlive, b.task.zoneId); 
+        moved = true;
       }
     } 
     else if (b.task?.type === 'balanced_attack' && atkAlive.length) {
@@ -181,7 +161,9 @@ function endBattle(b,reason){
   } else if(b.outcome==='defender'||b.outcome==='draw'){
     region.garrison=defAlive;
     if(b.outcome==='draw'&&atkAlive.length){ const from=G.planets[b.fromRegionId]; if(from) for(const s of atkAlive) from.garrison.push(s); }
-  } else if(b.outcome==='mutual'){ region.garrison=[]; region.owner=null; region.flash=1.2; }
+  } else if(b.outcome==='mutual'){ 
+    region.garrison=[]; region.owner=null; region.flash=1.2; 
+  }
   
   region.battle=null; b.cleanup=true; invalidatePlayerPlanets(); markDirty();
 }

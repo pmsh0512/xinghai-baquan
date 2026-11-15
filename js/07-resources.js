@@ -50,7 +50,7 @@ function tickBuilds(dt){
 }
 
 function regionOutput(region){
-  const lvMul=1+0.6*(region.level-1); let a=(4+region.level*2)*lvMul, e=(3+region.level*1.5)*lvMul;
+  const lvMul=1+0.1*(region.level-1); let a=(1.5+region.level*0.6)*lvMul, e=(3+region.level*1.5)*lvMul;
   if(region.facilities.includes('mine')) a*=1.5; if(region.facilities.includes('plant')) e*=1.5; return {alloy:a,energy:e};
 }
 
