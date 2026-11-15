@@ -98,7 +98,7 @@ function render(){
 }
 
 function drawPlanet(p){
-  const v=p.visibility||0;
+  const v=p.visibility||0;if (p.owner === 'player') v = 1;
   if(v<0.05){ if(CAM.scale>0.15){ ctx.fillStyle='rgba(60,70,90,.5)'; ctx.beginPath(); ctx.arc(p.x,p.y,1.8/CAM.scale,0,6.2832); ctx.fill(); } return; }
   const faction=p.owner?G.factions[p.owner]:null, color=faction?faction.color:NEUTRAL_COLOR, r=planetRadius(p.level), isSelected=G.selected===p.id;
   ctx.save(); ctx.globalAlpha=Math.min(1,v*1.15);
