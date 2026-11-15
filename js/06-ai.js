@@ -7,9 +7,9 @@ function tickAI(dt){
     if(key==='player') continue; 
     G.aiTimers[key]-=dt; if(G.aiTimers[key]>0) continue;
     
-    // 刷兵频率降低：初始 30 秒，最快 18 秒
+    // 刷兵频率
     const isSuper = G.factions[key].isSuperPower;
-    G.aiTimers[key] = isSuper ? 0.5 : Math.max(10, 20 - G.aiWaves[key]*0.1);
+    G.aiTimers[key] = isSuper ? Math.max(8, 15 - G.aiWaves[key]*0.1) : Math.max(30, 45 - G.aiWaves[key]*0.5);
     G.aiWaves[key]++; 
     const wave=G.aiWaves[key];
     
@@ -20,11 +20,15 @@ function tickAI(dt){
     
     const myPlanets=G.planets.filter(p=>p.owner===key); 
     if(!myPlanets.length) continue;
-    if (myPlanets.length >= 1 && !G.factions[key].isSuperPower) {
+    
+    // 天灾觉醒判定
+    if (myPlanets.length >= 100 && !G.factions[key].isSuperPower) {
       G.factions[key].isSuperPower = true;
-      addLog(`🔥 警告：${G.factions[key].name} 已觉醒终局霸权，开始全面暴兵！`, 'lose');
-      toast(`🔥 警告：${G.factions[key].name} 已觉醒！`);
+      addLog(`🔥 警告：${G.factions[key].name} 发现了希特勒裸照！`, 'lose');
+      toast(`🔥 警告：${G.factions[key].name} 发掘远古遗迹！`);
     }
+
+    // 选择母星（离中心最远的己方星作为大本营）
     let home = myPlanets[0];
     let maxD = -1;
     for(const p of myPlanets) {
@@ -33,33 +37,64 @@ function tickAI(dt){
     }
     
     let bestTarget = null, bestD = Infinity;
+    let priorityPlayerTarget = null, priorityD = Infinity;
+
+    // 天灾觉醒后视野扩大，正常情况视野有限
+    const visionRange = isSuper ? 2000 : 1200;
+
     for(const p of G.planets) {
       if(p.owner === key) continue;
       const d = Math.hypot(p.x - home.x, p.y - home.y);
-      if(d < bestD) { bestD = d; bestTarget = p; }
+
+      // ★ 核心逻辑：优先攻击视野内的玩家
+      if (p.owner === 'player') {
+        let inVision = false;
+        // 扫描该玩家星球是否在 AI 任意星球的视野范围内
+        for (const myP of myPlanets) {
+          if (Math.hypot(p.x - myP.x, p.y - myP.y) < visionRange) { 
+            inVision = true; 
+            break; 
+          }
+        }
+        if (inVision && d < priorityD) {
+          priorityD = d;
+          priorityPlayerTarget = p;
+        }
+      }
+
+      // 常规寻找最近目标（如果玩家不在视野内，就会打这个）
+      if(d < bestD) { 
+        bestD = d; 
+        bestTarget = p; 
+      }
+    }
+
+    // ★ 如果发现了视野内的玩家，立刻无视中立星球，全军集火玩家
+    if (priorityPlayerTarget) {
+      bestTarget = priorityPlayerTarget;
     }
     if(!bestTarget) continue;
 
     const pool = G.factions[key].designs || makeAIDesignPool();
-    const maxHull = isSuper ? 10 : Math.min(7, 1 + Math.floor(wave / 8)); 
+    const maxHull = isSuper ? 7 : Math.min(7, 1 + Math.floor(wave / 8)); 
     const fleetShips = [];
     
-    // 核心主力（最多 1 艘）
+    // 核心主力
     const highTier = pool.filter(d => d.hull >= 5 && d.hull <= maxHull);
-    if(highTier.length && Math.random() < 0.4) { 
+    if(highTier.length && (isSuper || Math.random() < 0.4)) { 
       fleetShips.push(createEnemyShipFromDesign(highTier[Math.floor(Math.random()*highTier.length)], key));
     }
     
-    // 中坚力量（基础 1 艘，每 5 波加 1 艘，最多 4 艘）
+    // 中坚力量
     const midTier = pool.filter(d => d.hull >= 3 && d.hull <= 4);
-    const midCount = Math.min(10, Math.floor(wave / 8) + 1);
+    const midCount = isSuper ? 6 : Math.min(3, Math.floor(wave / 8) + 1); 
     for(let i=0; i<midCount; i++) {
       if(midTier.length) fleetShips.push(createEnemyShipFromDesign(midTier[Math.floor(Math.random()*midTier.length)], key));
     }
     
-    // 护卫炮灰（基础 2 艘，每 4 波加 1 艘，最多 6 艘）
+    // 护卫炮灰
     const lowTier = pool.filter(d => d.hull <= 2);
-    const lowCount = Math.min(20, 2 + Math.floor(wave / 4));
+    const lowCount = isSuper ? 10 : Math.min(5, 1 + Math.floor(wave / 6)); 
     for(let i=0; i<lowCount; i++) {
       const d = lowTier.length ? lowTier[Math.floor(Math.random()*lowTier.length)] : pool[0];
       fleetShips.push(createEnemyShipFromDesign(d, key));
@@ -72,12 +107,17 @@ function tickAI(dt){
       else s.column = 2;
     }
     
-    // ★ 给 AI 赋予均衡推进
+    // 攻击并推进
     launchFleet(key, fleetShips, home.id, bestTarget.id, 'attack', { type: 'balanced_attack' });
-    addLog(`⚠ ${G.factions[key].name} 向 ${bestTarget.name} 进发（${fleetShips.length} 艘）`, 'lose');
+    
+    // 如果打的是玩家，日志颜色变红并特别提示
+    if (bestTarget.owner === 'player') {
+      addLog(` ${G.factions[key].name} 发现你的母星有蒋介石裸照，正率军扑向 ${bestTarget.name}（${fleetShips.length} 艘）`, 'lose');
+    } else {
+      addLog(`⚠ ${G.factions[key].name} 向 ${bestTarget.name} 进发（${fleetShips.length} 艘）`, 'lose');
+    }
   }
 }
-
 function updateVisibility(dt){
   for(const p of G.planets){ if(p.visibility>0) p.visibility=Math.max(0,p.visibility-dt*0.03); }
   visionTimer-=dt; if(visionTimer>0) return; visionTimer=0.2;

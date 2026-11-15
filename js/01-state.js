@@ -1,7 +1,25 @@
 /* =========================================================
    01-state.js — 基础状态与常量
    ========================================================= */
+/* ========== M0: 多玩家基础 ========== */
+const HUMAN_IDS = ['p1','p2','p3','p4','p5','p6'];
+const HUMAN_COLORS = ['#4ea8ff','#ff5a5a','#22c55e','#f59e0b','#ec4899','#06b6d4'];
+let MY_ID = 'p1';                         // 当前客户端控制的势力；单机固定 p1
+function isHuman(owner){ return !!owner && HUMAN_IDS.indexOf(owner) >= 0; }
+function isMe(owner){ return owner === MY_ID; }
 
+/* ========== M0: 可播种随机源 ========== */
+let _rngState = 0;
+function seedRng(s){ _rngState = (s >>> 0) || 0x9E3779B9; }
+// 单机默认用会话相关种子（行为等价于原来的真随机），联机时由服务器下发 matchSeed 覆盖
+seedRng((Date.now() ^ (Math.random() * 0xFFFFFFFF)) >>> 0);
+function rng(){
+  _rngState |= 0;
+  _rngState = (_rngState + 0x6D2B79F5) | 0;
+  let t = Math.imul(_rngState ^ (_rngState >>> 15), 1 | _rngState);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
 let supabaseClient = null;
 try {
   if (window.supabase) {
@@ -206,13 +224,18 @@ let uiTimer=0, pendingSave=0, idleSaveTimer=0, shipyardCurrent=null, attackSelec
 let _playerPlanetsCache=null, _playerPlanetsVersion=0, _playerPlanetsCacheVersion=-1, rightDirty=true, fullRenderCd=0, userInteracting=false;
 
 function uid(p){ return p + (G.nextUid++); }
-function rand(a,b){ return a + Math.random()*(b-a); }
+function rand(a,b){ return a + rng()*(b-a); }
 function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
 function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
 function hexA(hex, a){ const n=parseInt(hex.slice(1),16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; }
 function fmtTime(t){ const m=Math.floor(t/60), s=Math.floor(t%60); return m+':'+String(s).padStart(2,'0'); }
-
-function getPlayerPlanets(){ if(_playerPlanetsCacheVersion!==_playerPlanetsVersion){ _playerPlanetsCache=G.planets.filter(p=>p.owner==='player'); _playerPlanetsCacheVersion=_playerPlanetsVersion; } return _playerPlanetsCache; }
+function getPlayerPlanets(){
+  if(_playerPlanetsCacheVersion!==_playerPlanetsVersion){
+    _playerPlanetsCache = G.planets.filter(p => isMe(p.owner));
+    _playerPlanetsCacheVersion = _playerPlanetsVersion;
+  }
+  return _playerPlanetsCache;
+}
 function invalidatePlayerPlanets(){ _playerPlanetsVersion++; }
 function markRightDirty(){ rightDirty=true; if(fullRenderCd>0.6) fullRenderCd=0.6; }
 function markDirty(){ pendingSave=5; markRightDirty(); }
@@ -224,7 +247,7 @@ function generateCommander() {
     id: uid('c'),
     name: '指挥官-' + Math.floor(Math.random()*9000+1000),
     level: 1,
-    atkBonus: Math.floor(Math.random() * 3) + 1,
-    defBonus: Math.floor(Math.random() * 3) + 1,
+    atkBonus: Math.floor(rng() * 3) + 1,
+    defBonus: Math.floor(rng() * 3) + 1,
   };
 }
