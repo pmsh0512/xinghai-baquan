@@ -8,7 +8,8 @@ function tickAI(dt){
     G.aiTimers[key]-=dt; if(G.aiTimers[key]>0) continue;
     
     // 刷兵频率降低：初始 30 秒，最快 18 秒
-    G.aiTimers[key]=Math.max(1, 2 - G.aiWaves[key]*0.001); 
+    const isSuper = G.factions[key].isSuperPower;
+    G.aiTimers[key] = isSuper ? 0.5 : Math.max(10, 20 - G.aiWaves[key]*0.1);
     G.aiWaves[key]++; 
     const wave=G.aiWaves[key];
     
@@ -19,7 +20,11 @@ function tickAI(dt){
     
     const myPlanets=G.planets.filter(p=>p.owner===key); 
     if(!myPlanets.length) continue;
-    
+    if (myPlanets.length >= 1 && !G.factions[key].isSuperPower) {
+      G.factions[key].isSuperPower = true;
+      addLog(`🔥 警告：${G.factions[key].name} 已觉醒终局霸权，开始全面暴兵！`, 'lose');
+      toast(`🔥 警告：${G.factions[key].name} 已觉醒！`);
+    }
     let home = myPlanets[0];
     let maxD = -1;
     for(const p of myPlanets) {
@@ -36,7 +41,7 @@ function tickAI(dt){
     if(!bestTarget) continue;
 
     const pool = G.factions[key].designs || makeAIDesignPool();
-    const maxHull = Math.min(7, 1 + Math.floor(wave / 6)); 
+    const maxHull = isSuper ? 10 : Math.min(7, 1 + Math.floor(wave / 8)); 
     const fleetShips = [];
     
     // 核心主力（最多 1 艘）

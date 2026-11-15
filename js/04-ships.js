@@ -27,6 +27,16 @@ function createEnemyShipFromDesign(design, owner){
   }
   hp=Math.round(hp*(1+(bonus.hp||0))); spd=Math.round(spd*(1+(bonus.spd||0))); eva=Math.round(eva+(bonus.eva||0)*100);
   const dmgMul=1+(bonus.dmg||0), missileMul=1+(bonus.missileDmg||0), aaMul=1+(bonus.aaDmg||0), n=G.nextUid++;
+const isSuper = G.factions[owner]?.isSuperPower;
+  if (isSuper) {
+    hp = Math.round(hp * 3.0);       // 血量翻 3 倍
+    mainDmg = Math.round(mainDmg * 2.0); // 伤害翻倍
+    subDmg = Math.round(subDmg * 2.0);
+    missileDmg = Math.round(missileDmg * 2.0);
+    aaDmg = Math.round(aaDmg * 2.0);
+    eva = eva + 20;                  // 增加 20% 闪避
+  }
+  if(mainDmg) mainDmg=Math.round(mainDmg*dmgMul);
   return { uid:'e'+n, owner, name:design.name, column:0, squadron:[], maxHp:hp, hp, maxShd:shd, shd, maxEnergy:100, energy:100, baseSpd:spd, eva,
     mainDmg:Math.round(mainDmg*dmgMul), mainCharge, subDmg:Math.round(subDmg*dmgMul), subCharge, missileDmg:Math.round(missileDmg*missileMul), missileCharge,
     aaDmg:Math.round(aaDmg*aaMul), aaCharge, totalDmg:mainDmg+subDmg+missileDmg, repairAmount:0, repairCd:0, hangarSlots:0, fleetDmg:bonus.fleetDmg||0, fleetEva:bonus.fleetEva||0,

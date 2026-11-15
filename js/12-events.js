@@ -395,100 +395,149 @@ if (rightBody) {
 /* 地图交互 */
 let isDragging = false, dragStartX = 0, dragStartY = 0, dragCamX = 0, dragCamY = 0, hasDragged = false;
 
-if (typeof canvas !== 'undefined' && canvas) {
-  canvas.addEventListener('pointerdown', ev=>{ 
-    if (G.isDrawingZone) {
-      const w = screenToWorld(ev.clientX, ev.clientY);
-      G.drawingZone = { startX: w.x, startY: w.y, curX: w.x, curY: w.y };
-      return; 
-    }
-    isDragging = true; hasDragged = false; dragStartX = ev.clientX; dragStartY = ev.clientY; dragCamX = CAM.x; dragCamY = CAM.y; canvas.setPointerCapture(ev.pointerId); 
-  });
+// ★ 手机端侧边栏控制
+const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+const mobileCloseBtn = document.getElementById('mobileCloseBtn');
+const rightPanel = document.getElementById('right');
+if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', () => rightPanel.classList.add('show'));
+if (mobileCloseBtn) mobileCloseBtn.addEventListener('click', () => rightPanel.classList.remove('show'));
 
-  canvas.addEventListener('pointermove', ev=>{ 
-    if (G.isDrawingZone && G.drawingZone) {
-      const w = screenToWorld(ev.clientX, ev.clientY);
-      G.drawingZone.curX = w.x;
-      G.drawingZone.curY = w.y;
-      return;
-    }
-    if(!isDragging) return; 
-    const dx = ev.clientX - dragStartX, dy = ev.clientY - dragStartY; 
-    if(Math.abs(dx) + Math.abs(dy) > 4) hasDragged = true; 
-    CAM.x = dragCamX - dx / CAM.scale; CAM.y = dragCamY - dy / CAM.scale; 
-  });
-
-  canvas.addEventListener('pointerup', ev=>{
-    if (G.isDrawingZone && G.drawingZone) {
-      const dz = G.drawingZone;
-      const x1 = Math.min(dz.startX, dz.curX), x2 = Math.max(dz.startX, dz.curX);
-      const y1 = Math.min(dz.startY, dz.curY), y2 = Math.max(dz.startY, dz.curY);
-      
-      if (x2 - x1 < 10 || y2 - y1 < 10) {
-        toast('⚠️ 划定的区域太小了');
-        G.isDrawingZone = false; G.drawingZone = null;
-        document.getElementById('rightBody').dataset.sig = ''; renderRight();
-        return;
-      }
-
-      const targets = [];
-      const pad = 20 / CAM.scale;
-      for(const p of G.planets) {
-        if (p.owner === 'player') continue;
-        if (p.x >= x1 - pad && p.x <= x2 + pad && p.y >= y1 - pad && p.y <= y2 + pad) targets.push(p.id);
-      }
-      
-      if (targets.length === 0) toast('⚠️ 该区域内没有敌方或中立目标');
-      else {
-        if (!G.zones) G.zones = [];
-        G.zones.push({ id: 'z'+Date.now(), name: '战区 '+(G.zones.length+1), x1, y1, x2, y2, targets });
-        toast(`✅ 划定战区成功，包含 ${targets.length} 个目标`);
-      }
-      G.isDrawingZone = false; G.drawingZone = null;
-      document.getElementById('rightBody').dataset.sig = ''; renderRight(); markDirty();
-      return;
-    }
-    
-    if(!isDragging) return; 
-    isDragging = false; 
-    if(hasDragged) return;
-    
+// 地图触摸与拖拽
+canvas.addEventListener('pointerdown', ev=>{ 
+  if (G.isDrawingZone) {
     const w = screenToWorld(ev.clientX, ev.clientY);
-    let best = null, bestD = Infinity;
-    const b = viewBounds();
-    
-    for (const f of G.fleets) {
-      if (f.owner !== 'player') continue;
-      const d = Math.hypot(f.x - w.x, f.y - w.y);
-      if (d < 40 / CAM.scale) { 
-        G.selectedFleetId = f.id; G.selected = null; G.tab = 'fleet'; 
-        document.getElementById('rightBody').dataset.sig = ''; renderRight(); return; 
-      }
-    }
+    G.drawingZone = { startX: w.x, startY: w.y, curX: w.x, curY: w.y };
+    return; 
+  }
+  isDragging = true; hasDragged = false; dragStartX = ev.clientX; dragStartY = ev.clientY; dragCamX = CAM.x; dragCamY = CAM.y; 
+  if(ev.pointerType === 'mouse') canvas.setPointerCapture(ev.pointerId); 
+});
 
-    for(const p of G.planets){
-      if(p.x < b.x1-20 || p.x > b.x2+20 || p.y < b.y1-20 || p.y > b.y2+20) continue;
-      if((p.visibility||0) < 0.15) continue;
-      const d = Math.hypot(p.x - w.x, p.y - w.y);
-      if(d < bestD){ bestD = d; best = p; }
-    }
+canvas.addEventListener('pointermove', ev=>{ 
+  if (G.isDrawingZone && G.drawingZone) {
+    const w = screenToWorld(ev.clientX, ev.clientY);
+    G.drawingZone.curX = w.x;
+    G.drawingZone.curY = w.y;
+    return;
+  }
+  if(!isDragging) return; 
+  const dx = ev.clientX - dragStartX, dy = ev.clientY - dragStartY; 
+  if(Math.abs(dx) + Math.abs(dy) > 4) hasDragged = true; 
+  CAM.x = dragCamX - dx / CAM.scale; CAM.y = dragCamY - dy / CAM.scale; 
+});
+
+canvas.addEventListener('pointerup', ev=>{
+  if (G.isDrawingZone && G.drawingZone) {
+    const dz = G.drawingZone;
+    const x1 = Math.min(dz.startX, dz.curX), x2 = Math.max(dz.startX, dz.curX);
+    const y1 = Math.min(dz.startY, dz.curY), y2 = Math.max(dz.startY, dz.curY);
     
-    const threshold = 30 / CAM.scale;
-    if(best && bestD < threshold){
-      G.selected = best.id; G.tab = 'region'; attackSelect = null;
+    if (x2 - x1 < 10 || y2 - y1 < 10) {
+      toast('⚠️ 划定的区域太小了');
+      G.isDrawingZone = false; G.drawingZone = null;
       document.getElementById('rightBody').dataset.sig = ''; renderRight();
+      return;
     }
-  });
 
-  canvas.addEventListener('wheel', ev=>{ ev.preventDefault(); const wx0 = screenToWorld(ev.clientX, ev.clientY); const factor = ev.deltaY > 0 ? 0.85 : 1.18; CAM.scale = clamp(CAM.scale * factor, CAM.minScale, CAM.maxScale); const wx1 = screenToWorld(ev.clientX, ev.clientY); CAM.x += wx0.x - wx1.x; CAM.y += wx0.y - wx1.y; markDirty(); }, { passive: false });
-}
+    const targets = [];
+    const pad = 20 / CAM.scale;
+    for(const p of G.planets) {
+      if (p.owner === 'player') continue;
+      if (p.x >= x1 - pad && p.x <= x2 + pad && p.y >= y1 - pad && p.y <= y2 + pad) targets.push(p.id);
+    }
+    
+    if (targets.length === 0) toast('⚠️ 该区域内没有敌方或中立目标');
+    else {
+      if (!G.zones) G.zones = [];
+      G.zones.push({ id: 'z'+Date.now(), name: '战区 '+(G.zones.length+1), x1, y1, x2, y2, targets });
+      toast(`✅ 划定战区成功，包含 ${targets.length} 个目标`);
+    }
+    G.isDrawingZone = false; G.drawingZone = null;
+    document.getElementById('rightBody').dataset.sig = ''; renderRight(); markDirty();
+    return;
+  }
+  
+  if(!isDragging) return; 
+  isDragging = false; 
+  if(hasDragged) return;
+  
+  const w = screenToWorld(ev.clientX, ev.clientY);
+  let best = null, bestD = Infinity;
+  const b = viewBounds();
+  
+  for (const f of G.fleets) {
+    if (f.owner !== 'player') continue;
+    const d = Math.hypot(f.x - w.x, f.y - w.y);
+    if (d < 40 / CAM.scale) { 
+      G.selectedFleetId = f.id; G.selected = null; G.tab = 'fleet'; 
+      document.getElementById('rightBody').dataset.sig = ''; renderRight(); return; 
+    }
+  }
 
-const btnZoomIn = document.getElementById('btnZoomIn');
-if (btnZoomIn) btnZoomIn.addEventListener('click', ()=>{ CAM.scale = clamp(CAM.scale * 1.3, CAM.minScale, CAM.maxScale); });
-const btnZoomOut = document.getElementById('btnZoomOut');
-if (btnZoomOut) btnZoomOut.addEventListener('click', ()=>{ CAM.scale = clamp(CAM.scale / 1.3, CAM.minScale, CAM.maxScale); });
-const btnCenter = document.getElementById('btnCenter');
-if (btnCenter) btnCenter.addEventListener('click', ()=>{ const home = G.planets[G.playerHomeId]; if(home){ CAM.x = home.x; CAM.y = home.y; CAM.scale = 1; } });
+  for(const p of G.planets){
+    if(p.x < b.x1-20 || p.x > b.x2+20 || p.y < b.y1-20 || p.y > b.y2+20) continue;
+    if((p.visibility||0) < 0.15) continue;
+    const d = Math.hypot(p.x - w.x, p.y - w.y);
+    if(d < bestD){ bestD = d; best = p; }
+  }
+  
+  const threshold = 30 / CAM.scale;
+  if(best && bestD < threshold){
+    G.selected = best.id; G.tab = 'region'; attackSelect = null;
+    document.getElementById('rightBody').dataset.sig = ''; renderRight();
+    // 手机端点击星球后自动弹出侧边栏
+    if (window.innerWidth <= 768) rightPanel.classList.add('show');
+  }
+});
+
+// ★ 滚轮缩放（桌面端）
+canvas.addEventListener('wheel', ev=>{ 
+  ev.preventDefault(); 
+  const wx0 = screenToWorld(ev.clientX, ev.clientY); 
+  const factor = ev.deltaY > 0 ? 0.85 : 1.18; 
+  CAM.scale = clamp(CAM.scale * factor, CAM.minScale, CAM.maxScale); 
+  const wx1 = screenToWorld(ev.clientX, ev.clientY); 
+  CAM.x += wx0.x - wx1.x; CAM.y += wx0.y - wx1.y; markDirty(); 
+}, { passive: false });
+
+// ★ 双指缩放（手机端）
+let lastTouchDist = 0;
+canvas.addEventListener('touchstart', ev => {
+  if (ev.touches.length === 2) {
+    lastTouchDist = Math.hypot(
+      ev.touches[0].clientX - ev.touches[1].clientX,
+      ev.touches[0].clientY - ev.touches[1].clientY
+    );
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', ev => {
+  if (ev.touches.length === 2) {
+    ev.preventDefault(); // 阻止页面滚动
+    const dist = Math.hypot(
+      ev.touches[0].clientX - ev.touches[1].clientX,
+      ev.touches[0].clientY - ev.touches[1].clientY
+    );
+    if (lastTouchDist > 0) {
+      const factor = dist / lastTouchDist;
+      const cx = (ev.touches[0].clientX + ev.touches[1].clientX) / 2;
+      const cy = (ev.touches[0].clientY + ev.touches[1].clientY) / 2;
+      const wx0 = screenToWorld(cx, cy);
+      CAM.scale = clamp(CAM.scale * factor, CAM.minScale, CAM.maxScale);
+      const wx1 = screenToWorld(cx, cy);
+      CAM.x += wx0.x - wx1.x; CAM.y += wx0.y - wx1.y; 
+    }
+    lastTouchDist = dist;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', ev => {
+  if (ev.touches.length < 2) lastTouchDist = 0;
+});
+
+document.getElementById('btnZoomIn').addEventListener('click', ()=>{ CAM.scale = clamp(CAM.scale * 1.3, CAM.minScale, CAM.maxScale); });
+document.getElementById('btnZoomOut').addEventListener('click', ()=>{ CAM.scale = clamp(CAM.scale / 1.3, CAM.minScale, CAM.maxScale); });
+document.getElementById('btnCenter').addEventListener('click', ()=>{ const home = G.planets[G.playerHomeId]; if(home){ CAM.x = home.x; CAM.y = home.y; CAM.scale = 1; } });
 
 
 /* =========================================================
