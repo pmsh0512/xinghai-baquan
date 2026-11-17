@@ -4,7 +4,7 @@
 
 function tickAI(dt){
   for(const key in G.factions){
-    if(key==='player') continue; 
+    if(isHuman(key)) continue; 
     G.aiTimers[key]-=dt; if(G.aiTimers[key]>0) continue;
     
     // 刷兵频率
@@ -47,7 +47,7 @@ function tickAI(dt){
       const d = Math.hypot(p.x - home.x, p.y - home.y);
 
       // ★ 核心逻辑：优先攻击视野内的玩家
-      if (p.owner === 'player') {
+      if (isHuman(p.owner)) {
         let inVision = false;
         // 扫描该玩家星球是否在 AI 任意星球的视野范围内
         for (const myP of myPlanets) {
@@ -81,22 +81,22 @@ function tickAI(dt){
     
     // 核心主力
     const highTier = pool.filter(d => d.hull >= 5 && d.hull <= maxHull);
-    if(highTier.length && (isSuper || Math.random() < 0.4)) { 
-      fleetShips.push(createEnemyShipFromDesign(highTier[Math.floor(Math.random()*highTier.length)], key));
+    if(highTier.length && (isSuper || rng() < 0.4)) { 
+      fleetShips.push(createEnemyShipFromDesign(highTier[Math.floor(rng()*highTier.length)], key));
     }
     
     // 中坚力量
     const midTier = pool.filter(d => d.hull >= 3 && d.hull <= 4);
     const midCount = isSuper ? 6 : Math.min(3, Math.floor(wave / 8) + 1); 
     for(let i=0; i<midCount; i++) {
-      if(midTier.length) fleetShips.push(createEnemyShipFromDesign(midTier[Math.floor(Math.random()*midTier.length)], key));
+      if(midTier.length) fleetShips.push(createEnemyShipFromDesign(midTier[Math.floor(rng()*midTier.length)], key));
     }
     
     // 护卫炮灰
     const lowTier = pool.filter(d => d.hull <= 2);
     const lowCount = isSuper ? 10 : Math.min(5, 1 + Math.floor(wave / 6)); 
     for(let i=0; i<lowCount; i++) {
-      const d = lowTier.length ? lowTier[Math.floor(Math.random()*lowTier.length)] : pool[0];
+      const d = lowTier.length ? lowTier[Math.floor(rng()*lowTier.length)] : pool[0];
       fleetShips.push(createEnemyShipFromDesign(d, key));
     }
 
@@ -110,19 +110,18 @@ function tickAI(dt){
     // 攻击并推进
     launchFleet(key, fleetShips, home.id, bestTarget.id, 'attack', { type: 'balanced_attack' });
     
-    // 如果打的是玩家，日志颜色变红并特别提示
-    if (bestTarget.owner === 'player') {
-      addLog(` ${G.factions[key].name} 发现你的母星有蒋介石裸照，正率军扑向 ${bestTarget.name}（${fleetShips.length} 艘）`, 'lose');
-    } else {
+    
       addLog(`⚠ ${G.factions[key].name} 向 ${bestTarget.name} 进发（${fleetShips.length} 艘）`, 'lose');
-    }
+    
   }
 }
 function updateVisibility(dt){
   for(const p of G.planets){ if(p.visibility>0) p.visibility=Math.max(0,p.visibility-dt*0.03); }
+  // 人类玩家的领土互相始终可见（多人协作对抗 AI），只有 AI 领地受迷雾限制
+  for(const p of G.planets){ if(isHuman(p.owner)) p.visibility=1; }
   visionTimer-=dt; if(visionTimer>0) return; visionTimer=0.2;
   const sources=[]; for(const p of getPlayerPlanets()){ let range=500; const radars=p.facilities.filter(f=>f==='radar').length; range+=radars*350; if(p.id===G.playerHomeId) range+=200; sources.push({x:p.x,y:p.y,r:range}); }
-  for(const f of G.fleets){ if(f.owner!=='player') continue; sources.push({x:f.x,y:f.y,r:320}); }
+  for(const f of G.fleets){ if(!isMe(f.owner)) continue; sources.push({x:f.x,y:f.y,r:320}); }
   if(!sources.length) return; const b=viewBounds(), pad=900;
   for(const p of G.planets){ if(p.x<b.x1-pad||p.x>b.x2+pad||p.y<b.y1-pad||p.y>b.y2+pad) continue; if(p.visibility>=1) continue;
     for(const s of sources){ const d=Math.hypot(p.x-s.x,p.y-s.y); if(d<s.r){ p.visibility=1; break; } }
@@ -132,7 +131,7 @@ function updateVisibility(dt){
 function tickCIWS(dt){
   for(const p of getPlayerPlanets()){ const ciwsCount=p.facilities.filter(f=>f==='ciws').length; if(ciwsCount===0) continue;
     const range=180+ciwsCount*120, dps=25*ciwsCount;
-    for(const f of G.fleets){ if(f.owner==='player') continue; const d=Math.hypot(f.x-p.x,f.y-p.y); if(d>range) continue;
+    for(const f of G.fleets){ if(isMe(f.owner)) continue; const d=Math.hypot(f.x-p.x,f.y-p.y); if(d>range) continue;
       const ships=f.ships.filter(s=>s.hp>0); if(!ships.length) continue; let dmg=dps*dt;
       for(const s of ships){ if(dmg<=0) break; if(s.shd>0){ const abs=Math.min(s.shd,dmg); s.shd-=abs; dmg-=abs; } if(dmg>0){ const take=Math.min(s.hp,dmg); s.hp-=take; dmg-=take; if(s.hp<=0) s.hp=0; } }
     }

@@ -6,7 +6,10 @@ function isEditingInput(){
   const ae = document.activeElement; 
   if(!ae) return false;
   const tag = ae.tagName;
-  if(tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') return false;
+  // 只有文本类输入/文本域会打断重绘；复选框、下拉框变更后必须允许刷新（如出击勾选计数）
+  const isText = tag === 'TEXTAREA' ||
+    (tag === 'INPUT' && /^(text|number|search|email|password|tel|url)$/i.test(ae.type || 'text'));
+  if(!isText) return false;
   const rb = document.getElementById('rightBody'); 
   return rb && rb.contains(ae);
 }
@@ -35,6 +38,16 @@ function renderTop(){
   if(!has) html += '<span style="opacity:.4;font-size:11px;margin-left:4px">—</span>';
   box.innerHTML = html;
   document.getElementById('zoomLabel').textContent = CAM.scale.toFixed(2) + '×';
+
+  // 联机客户端：倍速/暂停由房主控制
+  const locked = typeof NET !== 'undefined' && NET.role === 'client';
+  document.querySelectorAll('.speed-btn[data-speed]').forEach(b => { b.disabled = locked; });
+  const bp = document.getElementById('btnPause');
+  if (bp) bp.disabled = locked;
+}
+
+function getMyBuildQueue(){
+  return G.buildQueue.filter(q => (q.owner || 'p1') === MY_ID);
 }
 
 function renderRight(){
@@ -66,7 +79,7 @@ function viewRegion(){
   
   const fac = p.owner ? G.factions[p.owner] : null;
   const color = fac ? fac.color : NEUTRAL_COLOR;
-  const isPlayer = p.owner === 'player';
+  const isPlayer = isMe(p.owner);
   const o = regionOutput(p);
   const mr = regionMatOutput(p);
   
@@ -152,7 +165,7 @@ function viewRegion(){
     }
   }
   
-  const myQueue = G.buildQueue.filter(q => q.regionId === p.id);
+  const myQueue = G.buildQueue.filter(q => q.regionId === p.id && (q.owner || 'p1') === MY_ID);
   if(myQueue.length){
     html += `<div class="panel"><h3>建造队列</h3>`;
     for(const q of myQueue){
@@ -205,12 +218,13 @@ function viewFleet(){
     </div>`;
     
     for (const z of G.zones) {
+      if (z.owner && !isMe(z.owner)) continue;
       let leftCount = 0;
       const minX = Math.min(z.x1, z.x2), maxX = Math.max(z.x1, z.x2);
       const minY = Math.min(z.y1, z.y2), maxY = Math.max(z.y1, z.y2);
       const pad = 20 / CAM.scale;
       for(const p of G.planets) {
-        if (p.owner === 'player') continue;
+        if (isMe(p.owner)) continue;
         if (p.x >= minX - pad && p.x <= maxX + pad && p.y >= minY - pad && p.y <= maxY + pad) leftCount++;
       }
 
@@ -248,7 +262,7 @@ function viewFleet(){
 
   html += `<div class="panel"><h3>🚀 部队指令</h3>`;
   
-  const myFleets = G.fleets.filter(f => f.owner === 'player');
+  const myFleets = G.fleets.filter(f => isMe(f.owner));
   if(myFleets.length){
     html += `<h4 style="font-size:11px;color:#a8cdfa;margin:10px 0 4px;">航行中 (${myFleets.length})</h4>`;
     for(const f of myFleets){
@@ -276,11 +290,11 @@ function viewFleet(){
     }
   }
 
-  const withShips = G.planets.filter(p => p.owner === 'player' && p.garrison.some(s=>s.owner==='player' && s.hp>0));
+  const withShips = G.planets.filter(p => isMe(p.owner) && p.garrison.some(s=>isMe(s.owner) && s.hp>0));
   if(withShips.length){
     html += `<h4 style="font-size:11px;color:#a8cdfa;margin:10px 0 4px;">星球驻军 (${withShips.length})</h4>`;
     for(const p of withShips){
-      const mine = p.garrison.filter(s=>s.owner==='player' && s.hp>0);
+      const mine = p.garrison.filter(s=>isMe(s.owner) && s.hp>0);
       const currentCmdId = mine.find(s => s.commanderId)?.commanderId || "";
       
       html += `<div style="background:rgba(0,0,0,0.2); padding:6px; border-radius:6px; margin-bottom:6px; border:1px solid rgba(255,255,255,0.05);">
@@ -362,7 +376,7 @@ function shipRowWithGroup(s){
 window.startDrawZone = () => { G.isDrawingZone = true; G.drawingZone = null; toast('✏️ 请在地图上拖拽划定战区'); document.getElementById('rightBody').dataset.sig = ''; renderRight(); };
 window.cancelDrawZone = () => { G.isDrawingZone = false; G.drawingZone = null; document.getElementById('rightBody').dataset.sig = ''; renderRight(); };
 window.assignCommanderToFleet = (fleetId, cmdId) => { const f = G.fleets.find(x => x.id === fleetId); if(f) { for(const s of f.ships) s.commanderId = cmdId || null; markDirty(); } };
-window.assignCommanderToPlanet = (planetId, cmdId) => { const p = G.planets[planetId]; if(p) { for(const s of p.garrison) { if(s.owner === 'player') s.commanderId = cmdId || null; } markDirty(); } };
+window.assignCommanderToPlanet = (planetId, cmdId) => { const p = G.planets[planetId]; if(p) { for(const s of p.garrison) { if(isMe(s.owner)) s.commanderId = cmdId || null; } markDirty(); } };
 window.assignTaskToFleet = (fleetId, taskVal) => {
   const f = G.fleets.find(x => x.id === fleetId);
   if(!f) return;
@@ -380,14 +394,14 @@ window.setMaxSweepRoutes = (val) => {
 
 window.globalDispatch = (zoneId, mode) => {
   const zone = G.zones.find(z => z.id === zoneId);
-  if (!zone) return;
+  if (!zone || (zone.owner && !isMe(zone.owner))) return;
 
   // 收集全图所有闲置兵
   let availableShips = [];
   for (const p of G.planets) {
-    if (p.owner !== 'player') continue;
+    if (!isMe(p.owner)) continue;
     for (const s of p.garrison) {
-      if (s.owner === 'player' && s.hp > 0) {
+      if (isMe(s.owner) && s.hp > 0) {
         availableShips.push({ ship: s, from: p.id, x: p.x, y: p.y });
       }
     }
@@ -403,7 +417,7 @@ window.globalDispatch = (zoneId, mode) => {
     // 1. 获取框内所有敌人
     let targets = [];
     for (const p of G.planets) {
-      if (p.owner !== 'player') {
+      if (!isMe(p.owner)) {
         if (p.x >= minX - pad && p.x <= maxX + pad && p.y >= minY - pad && p.y <= maxY + pad) targets.push(p);
       }
     }
@@ -450,11 +464,7 @@ window.globalDispatch = (zoneId, mode) => {
       }
       
       for (const pid in grouped) {
-        const fId = +pid;
-        const p = G.planets[fId];
-        // 从原星球移除
-        p.garrison = p.garrison.filter(gs => !grouped[pid].some(x => x.uid === gs.uid));
-        launchFleet('player', grouped[pid], fId, t.id, 'attack', { type: 'zone_sweep', zoneId: zone.id });
+        dispatch({ type:'launch', from:+pid, to:t.id, uids:grouped[pid].map(s=>s.uid), purpose:'attack', task:{ type:'zone_sweep', zoneId: zone.id } });
       }
     }
     
@@ -464,12 +474,12 @@ window.globalDispatch = (zoneId, mode) => {
   } else if (mode === 'balance' || mode === 'frontline') {
     let defendTargets = [];
     for (const p of G.planets) {
-      if (p.owner !== 'player') continue;
+      if (!isMe(p.owner)) continue;
       if (p.x >= minX - pad && p.x <= maxX + pad && p.y >= minY - pad && p.y <= maxY + pad) {
         if (mode === 'frontline') {
           let isFront = false;
           for (const e of G.planets) {
-            if (e.owner && e.owner !== 'player' && Math.hypot(e.x - p.x, e.y - p.y) < 350) { isFront = true; break; }
+            if (e.owner && !isMe(e.owner) && Math.hypot(e.x - p.x, e.y - p.y) < 350) { isFront = true; break; }
           }
           if (isFront) defendTargets.push(p);
         } else {
@@ -487,9 +497,7 @@ window.globalDispatch = (zoneId, mode) => {
       for (const item of chunk) { (grouped[item.from] = grouped[item.from] || []).push(item.ship); }
       
       for (const pid in grouped) {
-        const p = G.planets[+pid];
-        p.garrison = p.garrison.filter(gs => !grouped[pid].some(x => x.uid === gs.uid));
-        launchFleet('player', grouped[pid], +pid, defendTargets[i].id, 'move', null);
+        dispatch({ type:'launch', from:+pid, to:defendTargets[i].id, uids:grouped[pid].map(s=>s.uid), purpose:'move', task:null });
       }
     }
     toast(`🛡️ 全军布防：已分兵前往 ${defendTargets.length} 个星球`);
@@ -505,15 +513,16 @@ function viewAttackSelect(){
   const target = G.planets[attackSelect.targetId];
   if(!target){ attackSelect = null; return '<div class="empt">目标已不存在</div>'; }
   const sel = attackSelect.selected;
+  const task = attackSelect.task || 'focus_attack';
 
   let html = `<div class="panel">
     <h3>派遣至 ${target.name} <span class="sub">已选 ${sel.size}</span></h3>
     
     <div style="display:flex; gap:10px; margin-bottom:10px;">
       <select id="fleetTaskSelect" class="modsel" style="width:100%">
-        <option value="focus_attack">集中突击（直奔目标，驻扎）</option>
-        <option value="balanced_attack">均衡推进（攻下后自动推进）</option>
-        <option value="fixed_defend">定点防守（抵达驻扎）</option>
+        <option value="focus_attack" ${task === 'focus_attack' ? 'selected' : ''}>集中突击（直奔目标，驻扎）</option>
+        <option value="balanced_attack" ${task === 'balanced_attack' ? 'selected' : ''}>均衡推进（攻下后自动推进）</option>
+        <option value="fixed_defend" ${task === 'fixed_defend' ? 'selected' : ''}>定点防守（抵达驻扎）</option>
       </select>
     </div>
 
@@ -528,7 +537,7 @@ function viewAttackSelect(){
 
   for(const p of G.planets){
     if(p.id === target.id) continue;
-    const mine = p.garrison.filter(s=>s.owner==='player' && s.hp>0);
+    const mine = p.garrison.filter(s=>isMe(s.owner) && s.hp>0);
     if(!mine.length) continue;
     html += `<div class="panel"><h3>${p.name} <span class="sub">${mine.length}艘</span></h3>`;
     for(const s of mine.slice(0, 15)){
@@ -844,11 +853,11 @@ function viewAirforce(){
 }
 
 function viewShipyard(){
-  const yards = G.planets.filter(p => p.owner === 'player' && p.facilities.includes('dock'));
+  const yards = G.planets.filter(p => isMe(p.owner) && p.facilities.includes('dock'));
   let html = '';
   
   html += `<div style="display:flex; gap:6px; margin-bottom:10px;">
-    <button class="btn wide" data-showqueue="1" style="margin-top:0; background:rgba(255,215,95,.1); border-color:rgba(255,215,95,.3); color:#ffd75f;">📋 查看建造列表 (${G.buildQueue.length})</button>
+    <button class="btn wide" data-showqueue="1" style="margin-top:0; background:rgba(255,215,95,.1); border-color:rgba(255,215,95,.3); color:#ffd75f;">📋 查看建造列表 (${getMyBuildQueue().length})</button>
   </div>`;
 
   html += `<div class="panel"><h3>造船厂 <span class="sub">${yards.length} 座</span></h3>`;
@@ -919,9 +928,10 @@ function renderBuildQueueModal() {
   if (!container) return;
 
   const lastScrollTop = container.scrollTop;
+  const myQueue = getMyBuildQueue();
   let html = '';
   
-  if(!G.buildQueue.length) {
+  if(!myQueue.length) {
     html += `<div style="color:#7e8fae; text-align:center; padding:30px;">暂无建造任务</div>`;
   } else {
     html += `<table style="width:100%; border-collapse:collapse; font-size:12px;">
@@ -931,7 +941,7 @@ function renderBuildQueueModal() {
         <th style="padding:8px; width:40%;">进度</th>
         <th style="padding:8px; text-align:right;">操作</th>
       </tr>`;
-    for (const q of G.buildQueue) {
+    for (const q of myQueue) {
       const region = G.planets[q.regionId];
       const pct = Math.round(q.progress * 100);
       html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
@@ -946,7 +956,7 @@ function renderBuildQueueModal() {
           </div>
         </td>
         <td style="padding:8px; text-align:right;">
-          <button class="btn sm red" onclick="cancelBuild('${q.id}'); renderBuildQueueModal();">取消</button>
+          <button class="btn sm red" onclick="cancelBuildCmd('${q.id}')">取消</button>
         </td>
       </tr>`;
     }
@@ -960,6 +970,11 @@ function renderBuildQueueModal() {
 window.closeBuildQueueModal = () => {
   const el = document.getElementById('buildQueueModal');
   if(el) el.remove();
+};
+
+window.cancelBuildCmd = (qid) => {
+  dispatch({ type:'cancelBuild', qid });
+  renderBuildQueueModal();
 };
 
 function viewLog(){

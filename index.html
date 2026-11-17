@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>星海霸权 · 帝国征途</title>
 <link rel="stylesheet" href="./style.css">
-<script src="./supabase.js"></script>
 </head>
 <body>
 <canvas id="map"></canvas>
@@ -63,27 +62,33 @@
 
 <!-- 启动大厅 -->
 <div id="appMenu" class="app-menu">
-  <!-- 登录界面 -->
+  <!-- 昵称 -->
   <div id="menuLogin" class="menu-box">
     <h1 class="title">星 海 霸 权</h1>
-    <p class="subtitle">登 录 你 的 账 号</p>
-    <input type="text" id="authUsername" class="auth-input" placeholder="用户名 (仅英文字母、数字)" maxlength="20">
-    <input type="password" id="authPassword" class="auth-input" placeholder="密码">
-    <button class="auth-btn" id="btnLogin">登 录</button>
-    <button class="auth-btn" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#a8cdfa;" id="btnRegister">注 册</button>
-    <button class="guest-btn" id="btnGuest">游客登录（离线模式）</button>
+    <p class="subtitle">输 入 你 的 昵 称</p>
+    <input type="text" id="authUsername" class="auth-input" placeholder="昵称（最多 12 个字）" maxlength="12">
+    <button class="auth-btn" id="btnEnter" style="background:rgba(70,140,255,.25); border-color:rgba(120,180,255,.5); color:#fff;">进 入</button>
   </div>
 
-  <!-- 存档管理界面 -->
+  <!-- 模式选择 -->
+  <div id="menuMode" class="menu-box" style="display:none;">
+    <h2 class="title" style="font-size:24px; letter-spacing:4px;">选 择 模 式</h2>
+    <p class="subtitle" id="modeUserInfo">昵称：玩家</p>
+    <button class="auth-btn" id="btnSoloMode">单 人 游 戏</button>
+    <button class="auth-btn" id="btnMultiMode" style="background:rgba(34,197,94,.15); border-color:rgba(74,222,128,.45);">多 人 游 戏</button>
+    <button class="guest-btn" id="btnChangeName">更 换 昵 称</button>
+  </div>
+
+  <!-- 单人游戏：存档管理 -->
   <div id="menuSaves" class="menu-box" style="width: 600px; display:none;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-      <h2 class="title" style="font-size:24px; letter-spacing:2px;">存 档 管 理</h2>
+      <h2 class="title" style="font-size:24px; letter-spacing:2px;">单 人 游 戏</h2>
       <span id="menuUserInfo" style="color:#8fa8d6; font-size:14px;"></span>
     </div>
     <div class="save-list" id="saveListContainer"></div>
     <div style="display:flex; gap:10px; margin-top:20px;">
       <button class="auth-btn" id="btnNewGame" style="flex:1; background:rgba(70,140,255,.25); border-color:rgba(120,180,255,.5); color:#fff;">新 建 存 档</button>
-      <button class="auth-btn" id="btnLogout" style="flex:0.5; background:rgba(255,255,255,0.1);">退出账号</button>
+      <button class="auth-btn" id="btnSavesBack" style="flex:0.5; background:rgba(255,255,255,0.1);">返 回</button>
     </div>
   </div>
 
@@ -95,11 +100,31 @@
     <button class="auth-btn" id="btnConfirmNew">开 始 征 途</button>
     <button class="auth-btn" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#a8cdfa; margin-top:10px;" id="btnBackToSaves">返 回</button>
   </div>
+
+  <!-- 多人游戏独立界面 -->
+  <div id="menuMulti" class="menu-box" style="width: 560px; display:none;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h2 class="title" style="font-size:24px; letter-spacing:2px;">多 人 游 戏</h2>
+      <span id="multiUserInfo" style="color:#8fa8d6; font-size:13px;"></span>
+    </div>
+    <div id="multiBody"></div>
+    <button class="auth-btn" id="btnMultiBack" style="margin-top:16px; background:rgba(255,255,255,0.1);">返 回</button>
+  </div>
 </div>
 
 <div id="versionTag">v2.0.2026.10.18</div>
 
+<!-- M1 联机入口（大厅和游戏内都可见） -->
+<button id="netToggleBtn" title="联机状态" style="display:none;position:fixed;right:16px;bottom:16px;z-index:99998;width:44px;height:44px;border-radius:50%;background:rgba(10,20,40,.92);border:1px solid rgba(78,168,255,.5);color:#7fd3ff;font-size:19px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.45)">🌐</button>
+
+<!-- 由 server.py 动态生成，告知本次实际使用的 HTTP / WS 端口 -->
+<script src="./net-config.js"></script>
 <script src="./js/01-state.js" defer></script>
+<script src="./js/net-command.js" defer></script>
+<script src="./js/net-core.js" defer></script>
+<script src="./js/host-sim.js" defer></script>
+<script src="./js/net-client.js" defer></script>
+<script src="./js/net-lobby.js" defer></script>
 <script src="./js/02-map.js" defer></script>
 <script src="./js/03-design.js" defer></script>
 <script src="./js/04-ships.js" defer></script>

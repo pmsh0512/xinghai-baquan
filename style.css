@@ -481,3 +481,52 @@ input.txt:focus{border-color:rgba(120,180,255,.6)}
   font-family: monospace;
   letter-spacing: 1px;
 }
+/* =========================================================
+   手机端适配
+   ========================================================= */
+@media (max-width: 768px) {
+  #topbar { padding: 0 6px; gap: 4px; }
+  .logo { display: none; } /* 手机端隐藏 Logo 腾出空间 */
+  .stat { padding: 3px 6px; font-size: 10px; }
+  .stat .rate { display: none; } /* 手机端隐藏产出率 */
+  
+  /* 右侧面板变成抽屉，默认隐藏 */
+  #right { 
+    width: 100vw; 
+    max-width: 360px; 
+    transform: translateX(100%); 
+    transition: transform 0.3s cubic-bezier(0.2, 1, 0.4, 1);
+    box-shadow: -10px 0 30px rgba(0,0,0,0.8);
+  }
+  #right.show { transform: translateX(0); }
+  
+  #tabs { padding: 4px; }
+  .tab { padding: 6px 0; font-size: 10px; }
+  
+  /* 增加一个移动端呼出侧边栏的按钮 */
+  #mobileMenuBtn {
+    position: fixed; bottom: 20px; right: 20px; z-index: 10;
+    width: 50px; height: 50px; border-radius: 50%; cursor: pointer;
+    background: rgba(70,140,255,0.8); border: 2px solid rgba(120,180,255,0.5);
+    color: #fff; font-size: 24px; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+  }
+  
+  /* 侧边栏中的关闭按钮 */
+  #mobileCloseBtn {
+    position: absolute; top: 10px; left: -40px; z-index: 10;
+    width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+    background: rgba(255,90,90,0.8); border: 1px solid rgba(255,120,120,0.8);
+    color: #fff; font-size: 16px; display: none; align-items: center; justify-content: center;
+  }
+  #right.show #mobileCloseBtn { display: flex; }
+  
+  .menu-box { width: 90vw !important; max-width: 400px; padding: 20px; }
+  .speed-ctl { margin-right: 2px; padding: 2px; }
+  .zoom-ctl { display: none; } /* 手机端用双指缩放，隐藏按钮 */
+}
+
+/* 桌面端隐藏移动端按钮 */
+@media (min-width: 769px) {
+  #mobileMenuBtn, #mobileCloseBtn { display: none !important; }
+}

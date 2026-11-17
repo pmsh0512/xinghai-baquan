@@ -2,10 +2,10 @@
    04-ships.js — 实体工厂与派系初始化
    ========================================================= */
 
-function createPlayerShip(designId, commanderId = null){
+function createPlayerShip(designId, commanderId = null, owner = MY_ID){
   const d=G.designs.find(x=>x.id===designId); if(!d) return null;
   const st=designStats(d.mods,d.hullTier,d.shipClass), n=G.nextUid++;
-  return { uid:'s'+n, owner:'player', designId:d.id, name:d.name+'-'+String(n).padStart(3,'0'), tier:d.hullTier, shipClass:d.shipClass, groupId:null, column:0, squadron:[],
+  return { uid:'s'+n, owner:owner, designId:d.id, name:d.name+'-'+String(n).padStart(3,'0'), tier:d.hullTier, shipClass:d.shipClass, groupId:null, column:0, squadron:[],
     commanderId: commanderId,
     maxHp:st.hp, hp:st.hp, maxShd:st.shd, shd:st.shd, maxEnergy:100+(st.regen||0)*5, energy:100+(st.regen||0)*5, baseSpd:st.spd, eva:st.eva,
     mainDmg:st.mainDmg, mainCharge:st.mainCharge, subDmg:st.subDmg, subCharge:st.subCharge, missileDmg:st.missileDmg, missileCharge:st.missileCharge,
@@ -50,8 +50,13 @@ function createPlaneInstance(designId){
     dmg:st.dmg, aaDmg:st.aaDmg, charge:st.weapon?st.weapon.charge:1.5, hit:st.weapon?st.weapon.hit:'normal', spd:st.spd, eva:st.eva, row:0, _ch:0 };
 }
 
-function initFactions(numAI){
-  G.factions={ player:{ name:G.nationName, color:PLAYER_COLOR, isPlayer:true } };
+function initFactions(numAI, humanIds){
+  const humans = (humanIds && humanIds.length) ? humanIds : [MY_ID];
+  G.factions={};
+  G.aiTimers={}; G.aiWaves={};
+  humans.forEach((id, i)=>{
+    G.factions[id]={ name: i===0 ? G.nationName : ('玩家'+(i+1)), color: HUMAN_COLORS[HUMAN_IDS.indexOf(id)] || PLAYER_COLOR, isPlayer:true };
+  });
   for(let i=0;i<numAI;i++){
     const key='ai'+(i+1);
     G.factions[key]={ name:AI_NAMES[i%AI_NAMES.length], color:AI_COLORS[i%AI_COLORS.length], isPlayer:false, designs:makeAIDesignPool() };
@@ -60,8 +65,10 @@ function initFactions(numAI){
 }
 
 function placeFactions(numAI){
-  const outer=G.planets.filter(p=>p.level===1), home=outer[Math.floor(Math.random()*outer.length)];
-  home.owner='player'; home.facilities=['dock','repair']; G.playerHomeId=home.id; invalidatePlayerPlanets();
+  const outer=G.planets.filter(p=>p.level===1), home=outer[Math.floor(rng()*outer.length)];
+  home.owner=MY_ID; home.facilities=['dock','repair']; G.playerHomeId=home.id;
+  G.playerHomes=G.playerHomes||{}; G.playerHomes[MY_ID]=home.id;
+  invalidatePlayerPlanets();
   const used=new Set([home.id]), MIN_D=130;
   for(let i=0;i<numAI;i++){
     const key='ai'+(i+1);
@@ -73,12 +80,12 @@ function placeFactions(numAI){
     });
     if(!candidates.length) candidates=G.planets.filter(p=>!used.has(p.id)&&!p.owner);
     if(!candidates.length) continue;
-    const pick=candidates[Math.floor(Math.random()*candidates.length)]; used.add(pick.id); pick.owner=key;
+    const pick=candidates[Math.floor(rng()*candidates.length)]; used.add(pick.id); pick.owner=key;
     const pool=G.factions[key].designs;
-    for(let k=0;k<2;k++){ const s=createEnemyShipFromDesign(pool[0],key); s.column=Math.floor(Math.random()*3); pick.garrison.push(s); }
+    for(let k=0;k<2;k++){ const s=createEnemyShipFromDesign(pool[0],key); s.column=Math.floor(rng()*3); pick.garrison.push(s); }
   }
   for(let k=0;k<2;k++) home.garrison.push(createPlayerShip('d0'));
 }
 
 function findPlayerShipByUid(uid){ for(const p of G.planets){ const s=p.garrison.find(x=>x.uid===uid); if(s) return s; } return null; }
-function getAllPlayerShipsByGroup(gid){ const out=[]; for(const p of G.planets){ for(const s of p.garrison){ if(s.owner==='player'&&s.groupId===gid&&s.hp>0) out.push(s); } } return out; }
+function getAllPlayerShipsByGroup(gid){ const out=[]; for(const p of G.planets){ for(const s of p.garrison){ if(isMe(s.owner)&&s.groupId===gid&&s.hp>0) out.push(s); } } return out; }

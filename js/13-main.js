@@ -107,9 +107,9 @@ function update(dt){
   }
   
   for(const p of G.planets){
-    const hasRepair = p.facilities.includes('repair'), isOwned = p.owner === 'player';
+    const hasRepair = p.facilities.includes('repair'), isOwned = isMe(p.owner);
     for(const s of p.garrison){
-      if(s.owner !== 'player') continue;
+      if(!isMe(s.owner)) continue;
       const energyRate = (isOwned ? 0.10 : 0) + (hasRepair ? 0.10 : 0);
       if(energyRate > 0){ s.energy = Math.min(s.maxEnergy, s.energy + s.maxEnergy * energyRate * dt); }
       if(s.hp >= s.maxHp && s.shd >= s.maxShd) continue;
@@ -125,11 +125,12 @@ function update(dt){
   
   const bqModal = document.getElementById('buildQueueModal');
   if (bqModal) {
+    const myQueue = getMyBuildQueue();
     const rowCount = bqModal.querySelectorAll('table tr').length - 1; 
-    if (G.buildQueue.length !== rowCount && (G.buildQueue.length > 0 || rowCount > 0)) {
+    if (myQueue.length !== rowCount && (myQueue.length > 0 || rowCount > 0)) {
       renderBuildQueueModal();
     } else {
-      for (const q of G.buildQueue) {
+      for (const q of myQueue) {
         const bar = bqModal.querySelector(`.bq-progress-bar[data-qid="${q.id}"]`);
         const text = bqModal.querySelector(`.bq-pct-text[data-qid="${q.id}"]`);
         if (bar) {
@@ -141,9 +142,12 @@ function update(dt){
     }
   }
 
-  tickAI(dt);
-  tickCIWS(dt);
-  updateVisibility(dt);
+  // 联机客户端不跑模拟（也不会走到这里），AI/近防炮/迷雾都由主机推进
+  if (NET.role !== 'client') {
+    tickAI(dt);
+    tickCIWS(dt);
+    updateVisibility(dt);
+  }
   
   for(const p of G.planets){ if(p.flash > 0) p.flash = Math.max(0, p.flash - dt*2); }
   
@@ -171,9 +175,19 @@ function update(dt){
 function doTick(){
   const now = performance.now(), elapsed = (now - lastTick) / 1000;
   lastTick = now;
+
+  // 联机客户端：只做视图插值与 UI 刷新，不跑任何模拟（暂停时也要跑，保证插值收敛）
+  if (NET.role === 'client'){
+    if (elapsed > 0) clientTickView(Math.min(elapsed, 0.5));
+    return;
+  }
+
   if(G.paused || elapsed <= 0) return;
   const scaledElapsed = Math.min(elapsed * G.gameSpeed, 3600);
   update(scaledElapsed);
+
+  // 主机：按真实时间 5Hz 广播快照
+  if (NET.role === 'host') hostTickBroadcast(elapsed);
 }
 setInterval(doTick, 100);
 
@@ -187,7 +201,9 @@ document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) lastTic
 
 function newGame(){
   try {
+    if (typeof NET !== 'undefined' && NET.role !== 'solo'){ toast('请先退出联机房间再新建存档'); return; }
     G.time = 0; G.alloy = 2000; G.energy = 1200;
+    G.matchSeed = 0; G.spawns = {}; G.playerHomes = {};
     G.materials = {1:0,2:0,3:0,4:0,5:0,6:0,7:0};
     G.hullUnlocked = {1:true,2:false,3:false,4:false,5:false,6:false,7:false};
     G.planeHullUnlocked = {1:true,2:false,3:false,4:false,5:false,6:false,7:false};
@@ -225,33 +241,23 @@ function newGame(){
   }
 }
 
-async function initApp() {
+function initApp() {
   resize();
-  
+
   document.getElementById('gameUI').style.display = 'none';
   document.getElementById('appMenu').style.display = 'flex';
   showMenuScreen('menuLogin');
-  
-  if (supabaseClient) {
-    try {
-      const sessionPromise = supabaseClient.auth.getSession();
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000));
-      const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]);
-      
-      if (session) {
-        G.playerUser = session.user;
-        G.isGuest = false;
-        showMenuScreen('menuSaves');
-        document.getElementById('btnLogout').style.display = 'block';
-        const name = session.user.user_metadata?.username || '用户';
-        document.getElementById('menuUserInfo').textContent = '已登录: ' + name;
-        refreshSaveList();
-      }
-    } catch (e) {
-      console.warn('获取本地 Session 超时或失败，请手动登录', e);
+  G.playerUser = null;
+  G.isGuest = true;
+
+  try {
+    const saved = localStorage.getItem('xh_username');
+    if (saved) {
+      document.getElementById('authUsername').value = saved;
+      if (typeof applyUsername === 'function') applyUsername(saved);
     }
-  }
-  
+  } catch (e) {}
+
   lastTick = performance.now();
 }
 

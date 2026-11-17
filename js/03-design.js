@@ -73,14 +73,14 @@ function makeAIDesignPool(){
 }
 
 function aiDesignShip(wave){
-  const maxHull=Math.min(7,1+Math.floor(wave/4)), hull=1+Math.floor(Math.random()*maxHull);
-  const classes=['escort','vanguard','destroyer','cruiser','battleship','battlecruiser','missile','aa'], cls=classes[Math.floor(Math.random()*classes.length)];
+  const maxHull=Math.min(7,1+Math.floor(wave/4)), hull=1+Math.floor(rng()*maxHull);
+  const classes=['escort','vanguard','destroyer','cruiser','battleship','battlecruiser','missile','aa'], cls=classes[Math.floor(rng()*classes.length)];
   const mods={}, mainOptions=['lightCharge']; if(hull>=3) mainOptions.push('midCharge'); if(hull>=5) mainOptions.push('heavyCharge');
-  if(hull>=3&&Math.random()<0.3) mainOptions.push('nova');
-  const mainWeapon=(cls==='missile'||cls==='aa')?'lightCharge':mainOptions[Math.floor(Math.random()*mainOptions.length)];
-  mods.main={t:hull,s:'medium',w:mainWeapon}; if(Math.random()<0.7) mods.sub={t:Math.max(1,hull-1),s:'medium',w:'rapid'};
-  mods.armor={t:hull,s:Math.random()<0.5?'medium':'heavy'}; mods.engine={t:Math.max(1,hull-1),s:'medium'}; if(Math.random()<0.8) mods.reactor={t:hull,s:'medium'};
-  if(cls==='missile'){ mods.missile={t:hull,s:'medium',w:'missileMid'}; if(hull>=4&&Math.random()<0.5) mods.missile.w='missileLong'; }
+  if(hull>=3&&rng()<0.3) mainOptions.push('nova');
+  const mainWeapon=(cls==='missile'||cls==='aa')?'lightCharge':mainOptions[Math.floor(rng()*mainOptions.length)];
+  mods.main={t:hull,s:'medium',w:mainWeapon}; if(rng()<0.7) mods.sub={t:Math.max(1,hull-1),s:'medium',w:'rapid'};
+  mods.armor={t:hull,s:rng()<0.5?'medium':'heavy'}; mods.engine={t:Math.max(1,hull-1),s:'medium'}; if(rng()<0.8) mods.reactor={t:hull,s:'medium'};
+  if(cls==='missile'){ mods.missile={t:hull,s:'medium',w:'missileMid'}; if(hull>=4&&rng()<0.5) mods.missile.w='missileLong'; }
   if(cls==='aa'){ mods.aa={t:hull,s:'medium',w:'aaMissile'}; if(hull>=4) mods.aa.w='aaGun'; }
   return {name:`${SHIP_CLASSES[cls].name}-${wave}`, hull, cls, mods};
 }

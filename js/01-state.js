@@ -4,7 +4,7 @@
 /* ========== M0: 多玩家基础 ========== */
 const HUMAN_IDS = ['p1','p2','p3','p4','p5','p6'];
 const HUMAN_COLORS = ['#4ea8ff','#ff5a5a','#22c55e','#f59e0b','#ec4899','#06b6d4'];
-let MY_ID = 'p1';                         // 当前客户端控制的势力；单机固定 p1
+let MY_ID = HUMAN_IDS[0];                 // 当前客户端控制的势力；单机固定 p1，联机时由主机分配 slot
 function isHuman(owner){ return !!owner && HUMAN_IDS.indexOf(owner) >= 0; }
 function isMe(owner){ return owner === MY_ID; }
 
@@ -193,9 +193,10 @@ const FLEET_TASKS = {
 };
 
 const G = {
-  time: 0, nationName: '泰拉联邦', planets: [], fleets: [], battles: [], buildQueue: [], designs: [], planeDesigns: [],
+  time: 0, nationName: '泰拉联邦', playerName: '玩家1', planets: [], fleets: [], battles: [], buildQueue: [], designs: [], planeDesigns: [],
   planeDesign: { tier:1, type:'multirole', name:'新战机', weapons:{main:null}, armor:null, engine:null, reactor:null },
   hangar: {}, nextPlaneId: 1, groups: [], logs: [], factions: {}, selected: null, tab: 'region', playerHomeId: null,
+  matchSeed: 0, spawns: {}, playerHomes: {},
   nextUid: 1, nextGroupId: 1, aiTimers: {}, aiWaves: {}, 
   designMods: {main:null,sub:null,armor:null,engine:null,reactor:null,repair:null,missile:null,aa:null,catapult:null},
   designHull: 1, designClass: 'none', designName: '新设计', 
@@ -245,7 +246,7 @@ function toast(msg, dur){ dur=dur||1800; const el=document.createElement('div');
 function generateCommander() {
   return {
     id: uid('c'),
-    name: '指挥官-' + Math.floor(Math.random()*9000+1000),
+    name: '指挥官-' + Math.floor(rng()*9000+1000),
     level: 1,
     atkBonus: Math.floor(rng() * 3) + 1,
     defBonus: Math.floor(rng() * 3) + 1,

@@ -52,8 +52,9 @@ function render(){
     ctx.setLineDash([6,8]); ctx.lineDashOffset=-G.time*30; ctx.beginPath(); ctx.moveTo(from.x,from.y); ctx.lineTo(to.x,to.y); ctx.stroke(); ctx.setLineDash([]);
   }
   
-  // ★ 绘制作战区域
+  // ★ 绘制作战区域（只画自己的）
   for (const z of (G.zones || [])) {
+    if (z.owner && !isMe(z.owner)) continue;
     ctx.fillStyle = 'rgba(255, 215, 95, 0.05)';
     ctx.strokeStyle = 'rgba(255, 215, 95, 0.4)';
     ctx.lineWidth = 2 / CAM.scale;
@@ -67,7 +68,7 @@ function render(){
     ctx.textAlign = 'center';
     ctx.fillText(`${z.name}`, (z.x1 + z.x2) / 2, z.y1 - 20 / CAM.scale);
     ctx.font = `500 ${Math.round(10/CAM.scale)}px system-ui`;
-    ctx.fillText(`剩余目标: ${z.targets.filter(id => G.planets[id] && G.planets[id].owner !== 'player').length}`, (z.x1 + z.x2) / 2, z.y1 - 5 / CAM.scale);
+    ctx.fillText(`剩余目标: ${(z.targets || []).filter(id => G.planets[id] && G.planets[id].owner !== z.owner).length}`, (z.x1 + z.x2) / 2, z.y1 - 5 / CAM.scale);
   }
 
   // ★ 绘制正在拖拽的框
@@ -98,7 +99,7 @@ function render(){
 }
 
 function drawPlanet(p){
-  const v=p.visibility||0;if (p.owner === 'player') v = 1;
+  let v=p.visibility||0; if (isMe(p.owner)) v = 1;
   if(v<0.05){ if(CAM.scale>0.15){ ctx.fillStyle='rgba(60,70,90,.5)'; ctx.beginPath(); ctx.arc(p.x,p.y,1.8/CAM.scale,0,6.2832); ctx.fill(); } return; }
   const faction=p.owner?G.factions[p.owner]:null, color=faction?faction.color:NEUTRAL_COLOR, r=planetRadius(p.level), isSelected=G.selected===p.id;
   ctx.save(); ctx.globalAlpha=Math.min(1,v*1.15);
@@ -128,7 +129,7 @@ function drawFleet(f){
   
   // ★ 性能优化：只有舰船较少时才开启阴影发光
   if (count < 50) {
-    if (f.owner === 'player' && G.selectedFleetId === f.id) {
+    if (isMe(f.owner) && G.selectedFleetId === f.id) {
       ctx.shadowColor = '#ffd75f'; ctx.shadowBlur = 15/CAM.scale;
     } else {
       ctx.shadowColor = color; ctx.shadowBlur = 10/CAM.scale; 

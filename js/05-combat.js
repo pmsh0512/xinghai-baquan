@@ -18,7 +18,7 @@ function startBattle(region, attackerFleet, attackerShips){
   const battle={ id:uid('b'), regionId:region.id, attackerOwner:attackerFleet.owner, defenderOwner:defOwner, attacker:attackerShips, defender:defenders, atkPlanes, defPlanes, time:0, tickTimer:0, log:[], over:false, outcome:null, fromRegionId:attackerFleet.fromRegionId, task: attackerFleet.task };
   region.battle=battle; G.battles.push(battle);
   battle.log.push({r:0,text:`${G.factions[attackerFleet.owner]?.name} 进攻 ${region.name}`,type:'sys'});
-  if(attackerFleet.owner==='player') addLog(`⚔ 进攻 ${region.name}`,'fight');
+  if(isMe(attackerFleet.owner)) addLog(`⚔ 进攻 ${region.name}`,'fight');
 }
 
 function initCombatState(s){ s._chMain=0; s._chSub=0; s._chMissile=0; s._chAa=0; s._rcd=0; }
@@ -59,8 +59,8 @@ function planeFire(b,plane,enemyPlanes,allyPlanes,enemyShips){
   if(plane.hp<=0) return; plane._ch+=BATTLE_TICK; if(plane._ch<plane.charge) return; plane._ch-=plane.charge;
   let targets=[]; if(plane.row===0){ const frontRow=enemyPlanes.filter(p=>p.hp>0&&p.row===0); if(frontRow.length) targets=frontRow; else { const backRow=enemyPlanes.filter(p=>p.hp>0&&p.row===1); if(backRow.length) targets=backRow; else targets=enemyShips.filter(s=>s.hp>0); } }
   else { targets=enemyShips.filter(s=>s.hp>0); if(!targets.length) targets=enemyPlanes.filter(p=>p.hp>0); }
-  if(!targets.length) return; const target=targets[Math.floor(Math.random()*targets.length)];
-  let hit=true; if(plane.hit!=='always'){ const eva=(target.eva||0)/100; if(Math.random()<eva) hit=false; } if(!hit) return;
+  if(!targets.length) return; const target=targets[Math.floor(rng()*targets.length)];
+  let hit=true; if(plane.hit!=='always'){ const eva=(target.eva||0)/100; if(rng()<eva) hit=false; } if(!hit) return;
   let dmg=plane.dmg||0; if(target._carrierUid) dmg=plane.aaDmg||plane.dmg||0;
   applyDamage(target,dmg); if(target.hp<=0){ target.hp=0; b.log.push({r:Math.floor(b.time*10)/10,text:`${plane.name} 击毁 ${target.name}`,type:plane.owner===b.attackerOwner?'atk':'def'}); }
 }
@@ -69,18 +69,18 @@ function tickAAvsPlanes(b,dt){
   const allShips=[...b.attacker,...b.defender];
   for(const s of allShips){ if(s.hp<=0||!s.aaDmg) continue; s._chAa+=dt; if(s._chAa<(s.aaCharge||1)) continue; s._chAa-=(s.aaCharge||1);
     const isAtk=b.attacker.includes(s), enemyPlanes=isAtk?b.defPlanes.filter(p=>p.hp>0):b.atkPlanes.filter(p=>p.hp>0);
-    if(!enemyPlanes.length) continue; const target=enemyPlanes[Math.floor(Math.random()*enemyPlanes.length)];
-    const evadeChance=clamp((target.eva||0)/100,0,0.5); if(Math.random()<evadeChance) continue;
+    if(!enemyPlanes.length) continue; const target=enemyPlanes[Math.floor(rng()*enemyPlanes.length)];
+    const evadeChance=clamp((target.eva||0)/100,0,0.5); if(rng()<evadeChance) continue;
     const killChance=clamp(s.aaDmg/(target.maxHp+1),0.15,0.9);
-    if(Math.random()<killChance){ target.hp=0; b.log.push({r:Math.floor(b.time*10)/10,text:`📡 ${s.name} 击落 ${target.name}`,type:isAtk?'atk':'def'}); } else applyDamage(target,s.aaDmg*0.5);
+    if(rng()<killChance){ target.hp=0; b.log.push({r:Math.floor(b.time*10)/10,text:`📡 ${s.name} 击落 ${target.name}`,type:isAtk?'atk':'def'}); } else applyDamage(target,s.aaDmg*0.5);
   }
 }
 function checkCarrierLoss(b){
   for(const s of [...b.attacker,...b.defender]){ if(s.hp>0) continue;
     if(!s._carrierPlanes){ const planes=s.owner===b.attackerOwner?b.atkPlanes.filter(p=>p._carrierUid===s.uid&&p.hp>0):b.defPlanes.filter(p=>p._carrierUid===s.uid&&p.hp>0); s._carrierPlanes=planes; }
     if(s._carrierPlanes&&s._carrierPlanes.length){ const isAtk=b.attacker.includes(s), enemySide=isAtk?b.defender:b.attacker, enemyAlive=enemySide.filter(x=>x.hp>0);
-      for(const p of s._carrierPlanes){ if(p.hp<=0) continue; p.hp=0; if(!enemyAlive.length) break; const target=enemyAlive[Math.floor(Math.random()*enemyAlive.length)];
-        if(Math.random()<0.75){ applyDamage(target,p.dmg*2||20); b.log.push({r:Math.floor(b.time*10)/10,text:`💥 ${p.name} 自爆命中 ${target.name}`,type:isAtk?'atk':'def'}); } else { b.log.push({r:Math.floor(b.time*10)/10,text:`💥 ${p.name} 自爆失误`,type:isAtk?'atk':'def'}); }
+      for(const p of s._carrierPlanes){ if(p.hp<=0) continue; p.hp=0; if(!enemyAlive.length) break; const target=enemyAlive[Math.floor(rng()*enemyAlive.length)];
+        if(rng()<0.75){ applyDamage(target,p.dmg*2||20); b.log.push({r:Math.floor(b.time*10)/10,text:`💥 ${p.name} 自爆命中 ${target.name}`,type:isAtk?'atk':'def'}); } else { b.log.push({r:Math.floor(b.time*10)/10,text:`💥 ${p.name} 自爆失误`,type:isAtk?'atk':'def'}); }
       } s._carrierPlanes=[]; }
   }
 }
@@ -90,9 +90,9 @@ function collectSideDamage(attackers,targets,targetBonus,dt){
   if(frontCol===Infinity) return result; const frontTargets=targets.filter(s=>s.hp>0&&(s.column||0)===frontCol); if(!frontTargets.length) return result;
   const addDmg=(target,dmg)=>{ if(!target||target.hp<=0) return; result.set(target.uid,(result.get(target.uid)||0)+dmg); };
   for(const ship of attackers){ if(ship.hp<=0) continue;
-    if(ship.mainDmg>0){ ship._chMain+=dt; if(ship._chMain>=ship.mainCharge){ ship._chMain-=ship.mainCharge; const target=frontTargets[Math.floor(Math.random()*frontTargets.length)]; if(target&&Math.random()<hitChance(ship,target,targetBonus)) addDmg(target,ship.mainDmg); } }
-    if(ship.subDmg>0){ ship._chSub+=dt; if(ship._chSub>=ship.subCharge){ ship._chSub-=ship.subCharge; const target=frontTargets[Math.floor(Math.random()*frontTargets.length)]; if(target&&Math.random()<hitChance(ship,target,targetBonus)) addDmg(target,ship.subDmg); } }
-    if(ship.missileDmg>0){ ship._chMissile+=dt; if(ship._chMissile>=ship.missileCharge){ ship._chMissile-=ship.missileCharge; const target=frontTargets[Math.floor(Math.random()*frontTargets.length)]; if(target) addDmg(target,ship.missileDmg); } }
+    if(ship.mainDmg>0){ ship._chMain+=dt; if(ship._chMain>=ship.mainCharge){ ship._chMain-=ship.mainCharge; const target=frontTargets[Math.floor(rng()*frontTargets.length)]; if(target&&rng()<hitChance(ship,target,targetBonus)) addDmg(target,ship.mainDmg); } }
+    if(ship.subDmg>0){ ship._chSub+=dt; if(ship._chSub>=ship.subCharge){ ship._chSub-=ship.subCharge; const target=frontTargets[Math.floor(rng()*frontTargets.length)]; if(target&&rng()<hitChance(ship,target,targetBonus)) addDmg(target,ship.subDmg); } }
+    if(ship.missileDmg>0){ ship._chMissile+=dt; if(ship._chMissile>=ship.missileCharge){ ship._chMissile-=ship.missileCharge; const target=frontTargets[Math.floor(rng()*frontTargets.length)]; if(target) addDmg(target,ship.missileDmg); } }
   }
   return result;
 }
@@ -135,7 +135,7 @@ function endBattle(b,reason){
     onCapture(region, b.attackerOwner);
     
     let moved = false;
-    if (b.attackerOwner === 'player' && b.task?.type === 'zone_sweep' && atkAlive.length) {
+    if (isHuman(b.attackerOwner) && b.task?.type === 'zone_sweep' && atkAlive.length) {
       if (typeof smartSplitAndAttack === 'function') {
         region.garrison = []; 
         smartSplitAndAttack(region, atkAlive, b.task.zoneId); 
@@ -168,68 +168,4 @@ function endBattle(b,reason){
   region.battle=null; b.cleanup=true; invalidatePlayerPlanets(); markDirty();
 }
 
-function onCapture(region,owner){ region.flash=1.2; invalidatePlayerPlanets(); if(owner==='player') addLog(`★ 占领 ${region.name} (Lv${region.level})`,'win'); markDirty(); }
-
-function launchFleet(owner,ships,fromId,toId,purpose,task=null){
-  if(!ships.length) return null; const from=G.planets[fromId], to=G.planets[toId]; if(!from||!to) return null;
-  const spd=Math.min(...ships.map(s=>s.baseSpd)), d=dist(from,to), duration=Math.max(1.2,d/spd*1.5);
-  const fleet={ id:uid('f'), owner, ships, fromRegionId:fromId, toRegionId:toId, x:from.x, y:from.y, progress:0, duration, purpose:purpose||'move', task: task };
-  G.fleets.push(fleet); 
-  
-  if (owner === 'player' && !ships.some(s => s.commanderId)) {
-    const availableCommander = G.commanders.find(c => !G.fleets.some(f => f.ships.some(s => s.commanderId === c.id)) && !G.planets.some(p => p.garrison.some(s => s.commanderId === c.id)));
-    if (availableCommander) {
-      availableCommander.level = Math.min(20, availableCommander.level + 1);
-      availableCommander.atkBonus = Math.min(20, availableCommander.atkBonus + 1);
-      availableCommander.defBonus = Math.min(20, availableCommander.defBonus + 1);
-      for (const s of ships) s.commanderId = availableCommander.id;
-    }
-  }
-  return fleet;
-}
-
-function recallFleet(fleetId) {
-  const idx = G.fleets.findIndex(f => f.id === fleetId);
-  if (idx === -1) return;
-  const fleet = G.fleets[idx];
-  fleet.task = null;
-  fleet.toRegionId = fleet.fromRegionId;
-  fleet.progress = 1 - fleet.progress;
-  G.selectedFleetId = null;
-  markDirty();
-}
-
-function tickFleets(dt){
-  for(let i=G.fleets.length-1;i>=0;i--){ const f=G.fleets[i]; f.progress+=dt/f.duration;
-    if(f.progress>=1){ 
-      const to=G.planets[f.toRegionId]; 
-      if (!to) { G.fleets.splice(i,1); continue; }
-      f.x=to.x; f.y=to.y; G.fleets.splice(i,1); arriveFleet(f); 
-    }
-    else { const from=G.planets[f.fromRegionId], to=G.planets[f.toRegionId]; if(!from||!to){G.fleets.splice(i,1); continue;} f.x=from.x+(to.x-from.x)*f.progress; f.y=from.y+(to.y-from.y)*f.progress; }
-  }
-}
-
-function arriveFleet(fleet){
-  const target=G.planets[fleet.toRegionId], alive=fleet.ships.filter(s=>s.hp>0); if(!alive.length) return;
-  if(target.owner===fleet.owner){ 
-    for(const s of alive) target.garrison.push(s); 
-    if(fleet.owner==='player') addLog(`◉ ${alive.length} 艘舰船抵达 ${target.name}`,'info'); 
-    markDirty(); return; 
-  }
-  const defenders=target.garrison.filter(s=>s.hp>0);
-  if(!defenders.length){ 
-    target.garrison=alive; target.owner=fleet.owner; onCapture(target,fleet.owner); 
-    if (fleet.task?.type === 'balanced_attack' && fleet.owner === 'player') {
-       let best = null, bestD = Infinity;
-       for(const p of G.planets) {
-         if (p.owner === 'player' || p.id === target.id) continue;
-         const d = Math.hypot(p.x - target.x, p.y - target.y);
-         if (d < bestD) { bestD = d; best = p; }
-       }
-       if (best) launchFleet('player', alive, target.id, best.id, 'attack', fleet.task);
-    }
-    return; 
-  }
-  startBattle(target,fleet,alive);
-}
+function onCapture(region,owner){ region.flash=1.2; invalidatePlayerPlanets(); if(isMe(owner)) addLog(`★ 占领 ${region.name} (Lv${region.level})`,'win'); markDirty(); }

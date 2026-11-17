@@ -22,7 +22,7 @@ function launchFleet(owner, ships, fromId, toId, purpose = 'move', task = null){
     purpose: purpose, task: task 
   };
   
-  if (owner === 'player' && !ships.some(s => s.commanderId)) {
+  if (isMe(owner) && !ships.some(s => s.commanderId)) {
     const availableCommander = G.commanders.find(c => 
       !G.fleets.some(f => f.ships.some(s => s.commanderId === c.id)) && 
       !G.planets.some(p => p.garrison.some(s => s.commanderId === c.id))
@@ -77,11 +77,11 @@ function arriveFleet(fleet){
   if(!alive.length) return;
   
   if(target.owner === fleet.owner){ 
-    if (fleet.task?.type === 'zone_sweep' && fleet.owner === 'player') {
+    if (fleet.task?.type === 'zone_sweep' && isHuman(fleet.owner)) {
        smartSplitAndAttack(target, alive, fleet.task.zoneId);
     } else {
        for(const s of alive) target.garrison.push(s); 
-       if(fleet.owner === 'player') addLog(`◉ ${alive.length} 艘舰船抵达 ${target.name}`, 'info'); 
+       if(isMe(fleet.owner)) addLog(`◉ ${alive.length} 艘舰船抵达 ${target.name}`, 'info'); 
     }
     markDirty(); 
     return; 
@@ -92,7 +92,7 @@ function arriveFleet(fleet){
     target.owner = fleet.owner; 
     onCapture(target, fleet.owner); 
     
-    if (fleet.task?.type === 'zone_sweep' && fleet.owner === 'player') {
+    if (fleet.task?.type === 'zone_sweep' && isHuman(fleet.owner)) {
        target.garrison = []; // 清空后立刻推进
        smartSplitAndAttack(target, alive, fleet.task.zoneId);
     } else {
@@ -121,7 +121,7 @@ function getGarrisonPower(garrison) {
 function smartSplitAndAttack(fromP, ships, zoneId) {
   if (!ships || ships.length === 0) return;
   const zone = G.zones.find(z => z.id === zoneId);
-  if (!zone) {
+  if (!zone || (zone.owner && zone.owner !== fromP.owner)) {
     for(const s of ships) fromP.garrison.push(s);
     return;
   }
@@ -132,12 +132,12 @@ function smartSplitAndAttack(fromP, ships, zoneId) {
   
   let targets = [];
   for (const p of G.planets) {
-    if (p.owner === 'player') continue;
+    if (p.owner === fromP.owner) continue;
     if (p.x >= minX - pad && p.x <= maxX + pad && p.y >= minY - pad && p.y <= maxY + pad) targets.push(p);
   }
   
   if (targets.length === 0) {
-    toast(`🎯 ${zone.name} 扫荡完毕`);
+    if (fromP.owner === MY_ID) toast(`🎯 ${zone.name} 扫荡完毕`);
     addLog(`🎯 ${zone.name} 扫荡完毕`, 'win');
     for(const s of ships) fromP.garrison.push(s);
     return;
@@ -174,7 +174,7 @@ function smartSplitAndAttack(fromP, ships, zoneId) {
     
     const squad = remainingShips.splice(0, count);
     if (squad.length > 0) {
-      launchFleet('player', squad, fromP.id, t.id, 'attack', { type: 'zone_sweep', zoneId: zoneId });
+      launchFleet(fromP.owner, squad, fromP.id, t.id, 'attack', { type: 'zone_sweep', zoneId: zoneId });
     }
   }
   

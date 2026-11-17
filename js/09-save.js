@@ -27,7 +27,16 @@ function getSaveData(){
   };
 }
 
+function migrateLegacyOwners(data){
+  // 旧存档用字符串 'player' 作为势力键与 owner，统一迁移到当前客户端的 MY_ID
+  if(data.factions && data.factions.player){ data.factions[MY_ID]=data.factions.player; delete data.factions.player; }
+  const fix=o=>{ if(o && o.owner==='player') o.owner=MY_ID; };
+  if(Array.isArray(data.changedPlanets)) for(const c of data.changedPlanets){ fix(c); if(Array.isArray(c.garrison)) for(const s of c.garrison) fix(s); }
+  if(Array.isArray(data.fleets)) for(const f of data.fleets){ fix(f); if(Array.isArray(f.ships)) for(const s of f.ships) fix(s); }
+}
+
 function applySaveData(data){
+  migrateLegacyOwners(data);
   G.nationName = data.nationName || '泰拉联邦'; 
   G.time = data.time || 0; G.alloy = data.alloy || 0; G.energy = data.energy || 0;
   G.materials = data.materials || {1:0,2:0,3:0,4:0,5:0,6:0,7:0}; 
@@ -42,12 +51,12 @@ function applySaveData(data){
   G.hangar = data.hangar || {}; G.nextPlaneId = data.nextPlaneId || 1; 
   G.groups = data.groups || []; G.nextGroupId = data.nextGroupId || 1; G.nextUid = data.nextUid || 1; G.logs = data.logs || [];
   G.playerHomeId = data.playerHomeId; G.factions = data.factions || {};
-  for(const key in G.factions){ if(key === 'player') continue; if(!G.factions[key].designs) G.factions[key].designs = makeAIDesignPool(); }
+  for(const key in G.factions){ if(isHuman(key)) continue; if(!G.factions[key].designs) G.factions[key].designs = makeAIDesignPool(); }
   G.aiTimers = data.aiTimers || {}; G.aiWaves = data.aiWaves || {}; G.buildQueue = data.buildQueue || []; G.designMods = data.designMods || G.designMods;
   G.designHull = data.designHull || 1; G.designClass = data.designClass || 'none'; G.designName = data.designName || '新设计'; 
   shipyardCurrent = data.shipyardCurrent || null;
   G.commanders = data.commanders || [];
-  G.zones = data.zones || []; // ★ 新增恢复
+  G.zones = (data.zones || []).map(z => ({ ...z, owner: z.owner || 'p1' })); // ★ 旧存档战区归属 p1
   
   if (G.commanders.length === 0) {
     G.commanders.push(generateCommander());
@@ -92,7 +101,7 @@ function applyOfflineProgress(saveTime){
     G.alloy += out.alloy * simTime; 
     G.energy += out.energy * simTime;
     for(const p of G.planets){ 
-      if(p.owner !== 'player' || p.level < 3) continue; 
+      if(!isMe(p.owner) || p.level < 3) continue; 
       const rate = regionMatOutput(p); 
       if(rate > 0){ 
         const tier = Math.min(p.level - 1, 7); 
@@ -104,7 +113,7 @@ function applyOfflineProgress(saveTime){
   for(const p of G.planets){ 
     const hasRepair = p.facilities.includes('repair'); 
     for(const s of p.garrison){ 
-      if(s.owner !== 'player') continue; 
+      if(!isMe(s.owner)) continue; 
       if(hasRepair){ s.hp = s.maxHp; s.shd = s.maxShd; } 
       s.energy = s.maxEnergy; 
     } 
@@ -126,7 +135,7 @@ function saveToLocal(silent){
       if(typeof toast === 'function' && !silent) toast('❌ 存档空间已满，清理部分旧数据...', 2000);
       try {
         const cleanData = getSaveData();
-        if (cleanData.fleets) cleanData.fleets = cleanData.fleets.filter(f => f.owner === 'player');
+        if (cleanData.fleets) cleanData.fleets = cleanData.fleets.filter(f => isMe(f.owner));
         localStorage.setItem(SAVE_KEY, JSON.stringify(cleanData));
       } catch(err) {
         try { localStorage.removeItem(SAVE_KEY); } catch(_) {}

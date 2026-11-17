@@ -23,7 +23,7 @@ function startBuild(designId, regionId, count = 1){
   
   for (let i = 0; i < count; i++) {
     G.buildQueue.push({ 
-      id: uid('q'), designId: d.id, designName: d.name, regionId, 
+      id: uid('q'), owner: MY_ID, designId: d.id, designName: d.name, regionId, 
       progress: 0, duration: 8 + st.cost * 0.015 
     });
   }
@@ -45,7 +45,7 @@ function cancelBuild(qId) {
 function tickBuilds(dt){
   for(let i=G.buildQueue.length-1;i>=0;i--){ const q=G.buildQueue[i], region=G.planets[q.regionId]; if(!region){ G.buildQueue.splice(i,1); continue; }
     const speedMul=1+(region.facilities.includes('dock')?0.4:0); q.progress+=dt*speedMul/q.duration;
-    if(q.progress>=1){ const ship=createPlayerShip(q.designId); if(ship) region.garrison.push(ship); G.buildQueue.splice(i,1); markRightDirty(); }
+    if(q.progress>=1){ const ship=createPlayerShip(q.designId, null, q.owner || MY_ID); if(ship) region.garrison.push(ship); G.buildQueue.splice(i,1); markRightDirty(); }
   }
 }
 
@@ -61,17 +61,23 @@ function totalOutput(){ let a=0,e=0; for(const p of getPlayerPlanets()){ const o
 function upgradeCost(region){ const lv=region.level; return { alloy:Math.floor(200*Math.pow(1.85,lv-1)), energy:Math.floor(140*Math.pow(1.85,lv-1)) }; }
 
 function upgradeRegion(id){
-  const r=G.planets[id]; if(!r||r.owner!=='player') return false; if(r.level>=7) return false;
+  const r=G.planets[id]; if(!r||!isMe(r.owner)) return false; if(r.level>=7) return false;
   const c=upgradeCost(r); if(G.alloy<c.alloy||G.energy<c.energy) return false;
   G.alloy-=c.alloy; G.energy-=c.energy; r.level++; addLog(`⬆ ${r.name} 升级至 Lv.${r.level}`,'info'); markDirty(); return true;
 }
 
 function facilityCost(region,type){ const def=FACILITIES[type], count=region.facilities.filter(f=>f===type).length; return { alloy:Math.floor(def.base.alloy*Math.pow(def.growth,count)), energy:Math.floor(def.base.energy*Math.pow(def.growth,count)) }; }
 
-function maxFacilitySlots(region){ const n=region.level; let base=Math.max(1,Math.floor(1+Math.pow(2,n/2-1))); if(region.id===G.playerHomeId) base=Math.max(base,region.facilities.length); return base; }
+function maxFacilitySlots(region){
+  const n=region.level; let base=Math.max(1,Math.floor(1+Math.pow(2,n/2-1)));
+  const homes=G.playerHomes||{};
+  const isHome = region.id===G.playerHomeId || Object.keys(homes).some(k=>homes[k]===region.id);
+  if(isHome) base=Math.max(base,region.facilities.length);
+  return base;
+}
 
 function buildFacility(id,type){
-  const r=G.planets[id]; if(!r||r.owner!=='player') return false; if(!FACILITIES[type]) return false;
+  const r=G.planets[id]; if(!r||!isMe(r.owner)) return false; if(!FACILITIES[type]) return false;
   if(r.facilities.length>=maxFacilitySlots(r)) return false; const c=facilityCost(r,type);
   if(G.alloy<c.alloy||G.energy<c.energy) return false;
   G.alloy-=c.alloy; G.energy-=c.energy; r.facilities.push(type); addLog(`🏗 ${r.name} 建成 ${FACILITIES[type].name}`,'info'); markDirty(); return true;
